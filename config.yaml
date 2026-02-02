@@ -1,34 +1,31 @@
 # 全局设置
 global:
-  base_invest_amount: 200  # 每次定投的基础金额（元）
-  max_daily_invest: 1000   # 单日最大投入上限（风控）
-  retry_times: 3           # 接口失败重试次数
+  base_invest_amount: 200  # 基础定投金额
+  max_daily_invest: 1000   # 单日上限
+  retry_times: 3
 
 # 策略参数
 strategy:
-  rsi_buy_threshold: 35    # RSI低于此值视为超卖（左侧买入）
-  rsi_sell_threshold: 70   # RSI高于此值视为超买（右侧止盈）
-  sentiment_buy_threshold: 7 # 情绪分 > 7 视为显著利好
+  rsi_buy_threshold: 35    # 超卖线
+  rsi_sell_threshold: 70   # 超买线
+  sentiment_buy_threshold: 7
 
-# 关注的基金列表
+# 基金列表 (直接填场外代码)
 funds:
-  - code: "001552"
+  # 【更新】天弘中证红利低波A (场外代码)
+  - code: "008114"
     name: "天弘中证红利低波A"
-    type: "fund"  # 场外基金
-    sector_keyword: "红利低波 中证红利"
+    type: "fund"
+    sector_keyword: "红利低波"  # AI搜新闻用的关键词
 
+  # 招商中证白酒 (场外代码是 161725，既是LOF也是场外，通用)
   - code: "161725"
     name: "招商中证白酒指数"
     type: "fund"
-    sector_keyword: "白酒板块 贵州茅台"
+    sector_keyword: "白酒行业"
 
+  # 天弘恒生科技 (场外代码)
   - code: "012349"
     name: "天弘恒生科技指数C"
     type: "fund"
-    sector_keyword: "恒生科技 港股科技"
-
-  # 示例：添加场内ETF（如需）
-  # - code: "510300"
-  #   name: "沪深300ETF"
-  #   type: "etf"
-  #   sector_keyword: "A股 沪深300"
+    sector_keyword: "恒生科技"
