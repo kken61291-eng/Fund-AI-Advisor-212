@@ -30,8 +30,8 @@ def retry(retries=3, delay=2):
 
 def send_email(subject, content):
     """发送邮件通知 (QQ邮箱)"""
-    mail_user = os.getenv("MAIL_USER") # 你的QQ邮箱
-    mail_pass = os.getenv("MAIL_PASS") # 刚才获取的授权码
+    mail_user = os.getenv("MAIL_USER")
+    mail_pass = os.getenv("MAIL_PASS")
     
     if not mail_user or not mail_pass:
         logger.warning("未配置邮箱账号密码，跳过发送")
@@ -47,7 +47,7 @@ def send_email(subject, content):
     message['Subject'] = Header(subject, 'utf-8')
 
     try:
-        # 连接 QQ 邮箱服务器 (SSL加密, 端口465)
+        # 连接 QQ 邮箱服务器
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(mail_user, mail_pass)
         smtpObj.sendmail(sender, receivers, message.as_string())
