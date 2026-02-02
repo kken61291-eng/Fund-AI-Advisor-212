@@ -2,37 +2,24 @@ import akshare as ak
 import pandas as pd
 from utils import retry, logger
 from datetime import datetime
-import difflib # 引入模糊匹配库
 
 class MarketScanner:
     def __init__(self):
         pass
 
-    def _find_function_dynamically(self, keywords):
+    def _get_column_by_keyword(self, df, keywords):
         """
-        【黑科技】在 akshare 库中动态搜索包含所有关键词的函数名
+        辅助函数：在DataFrame中模糊查找包含任一关键词的列名
         """
-        # 获取 akshare 所有属性/函数列表
-        all_attrs = dir(ak)
-        
-        # 筛选同时包含所有 keywords 的函数
-        candidates = [
-            attr for attr in all_attrs 
-            if all(k in attr for k in keywords) 
-            and not attr.startswith('_') # 排除私有方法
-        ]
-        
-        # 按长度排序，通常越短的越可能是主入口，或者按相似度排序
-        if candidates:
-            # 优先找完全匹配或最短的
-            candidates.sort(key=len)
-            logger.info(f"🔍 动态搜索关键词 {keywords}，找到候选: {candidates[:3]}...")
-            return getattr(ak, candidates[0]) # 返回第一个函数对象
+        for col in df.columns:
+            for kw in keywords:
+                if kw in str(col):
+                    return col
         return None
 
     @retry(retries=2)
     def get_market_sentiment(self):
-        logger.info("📡 启动自适应全市场扫描...")
+        logger.info("📡 正在获取市场资金数据 (V2.1)...")
         market_data = {
             "north_money": 0,
             "north_label": "无数据",
@@ -40,104 +27,78 @@ class MarketScanner:
             "market_status": "震荡"
         }
 
-        # --- 1. 获取北向资金 (自适应模式) ---
+        # --- 1. 获取北向资金 (改用历史接口，更稳) ---
         try:
-            # A计划: 尝试已知最稳定的接口名
-            func = None
-            try:
-                # 尝试直接调用（假定它存在）
-                if hasattr(ak, 'stock_hsgt_north_net_flow_in_em'):
-                    func = ak.stock_hsgt_north_net_flow_in_em
-                elif hasattr(ak, 'stock_hsgt_hist_em'):
-                    func = ak.stock_hsgt_hist_em
-            except:
-                pass
-
-            # B计划: 如果A计划都没找到，启动动态搜索
-            if func is None:
-                logger.warning("⚠️ 标准接口未找到，启动动态搜索 'hsgt' + 'north'...")
-                func = self._find_function_dynamically(['hsgt', 'north', 'flow'])
+            # 获取沪深港通历史数据 (symbol="北上")
+            # 这是一个非常稳定的接口，返回过去每天的数据
+            df_north = ak.stock_hsgt_hist_em(symbol="北上")
             
-            # 执行函数
-            if func:
-                # 注意：不同接口参数可能不同，这里尝试通用参数
-                try:
-                    df_north = func(symbol="北上")
-                except TypeError:
-                    df_north = func() # 尝试无参调用
-
-                if not df_north.empty:
-                    # 智能解析：不管列名叫什么，找数值列
-                    # 通常北向资金接口会有一列是 'value' 或 'net_flow'
-                    # 我们取最后一列（通常是数值）或者通过类型判断
-                    latest_row = df_north.iloc[-1]
+            if not df_north.empty:
+                # 取最后一行（最近一个交易日）
+                latest = df_north.iloc[-1]
+                
+                # 找数值列：通常叫 "当日净流入" 或 "净流入"
+                col_name = self._get_column_by_keyword(df_north, ["净流入", "value"])
+                
+                if col_name:
+                    val_raw = float(latest[col_name])
                     
-                    # 暴力查找法：在最后一行里找最大的那个数字（假设净流入是核心数据）
-                    # 或者找包含 "当日"、"净流入" 字眼的列
-                    target_col = None
-                    for col in df_north.columns:
-                        if "净流入" in str(col) or "value" in str(col).lower():
-                            target_col = col
-                            break
+                    # 单位换算：接口通常返回 亿元 (比如 12.5) 或 元
+                    # 东方财富历史接口通常直接返回 亿元 单位
+                    # 我们做个判断：如果数值 > 10000，说明是万元或元，需要除
+                    # 如果数值 < 1000，说明已经是亿元了
                     
-                    if target_col:
-                        val = float(latest_row[target_col])
-                        # 单位修正：如果是很大的数(>1亿)，说明是元；如果很小，可能是亿元
-                        if abs(val) > 100000000: 
-                            val = val / 100000000 # 转亿
-                        elif abs(val) > 10000:
-                            val = val / 10000 # 万转亿 (不太可能，通常是元)
-                        
-                        market_data['north_money'] = round(val, 2)
-                        
-                        # 打标签
-                        if val > 20: market_data['north_label'] = "大幅流入 (利好)"
-                        elif val > 0: market_data['north_label'] = "小幅流入 (温和)"
-                        elif val < -20: market_data['north_label'] = "大幅流出 (利空)"
-                        else: market_data['north_label'] = "小幅流出 (承压)"
-                        
-                        logger.info(f"✅ 北向资金获取成功 ({func.__name__}): {val}亿")
-                    else:
-                        logger.warning(f"获取数据成功但无法识别列名: {df_north.columns}")
-            else:
-                logger.error("❌ 无法找到北向资金相关接口")
+                    if abs(val_raw) > 100000000: # 可能是元
+                        net_inflow = round(val_raw / 100000000, 2)
+                    elif abs(val_raw) > 10000:   # 可能是万元
+                        net_inflow = round(val_raw / 10000, 2)
+                    else:                        # 应该是亿元
+                        net_inflow = round(val_raw, 2)
 
+                    market_data['north_money'] = net_inflow
+                    
+                    # 情绪打标签
+                    if net_inflow > 20: market_data['north_label'] = "大幅流入"
+                    elif net_inflow > 0: market_data['north_label'] = "小幅流入"
+                    elif net_inflow > -20: market_data['north_label'] = "小幅流出"
+                    else: market_data['north_label'] = "大幅流出"
+                    
+                    logger.info(f"✅ 北向资金锁定: {net_inflow}亿 (列名:{col_name})")
+                else:
+                    logger.warning(f"❌ 北向资金列名匹配失败: {df_north.columns}")
         except Exception as e:
-            logger.error(f"北向资金模块异常: {e}")
+            logger.error(f"北向资金获取异常: {e}")
 
-        # --- 2. 获取板块资金 (自适应模式) ---
+        # --- 2. 获取板块资金流向 ---
         try:
-            # 搜索包含 "board", "industry" 的接口
-            func_sector = getattr(ak, 'stock_board_industry_name_em', None)
-            if not func_sector:
-                func_sector = self._find_function_dynamically(['board', 'industry', 'name'])
+            # 行业资金流向
+            df_sector = ak.stock_board_industry_name_em(indicator="资金流向")
+            
+            if not df_sector.empty:
+                # 找排序列：通常叫 "主力净流入"
+                sort_col = self._get_column_by_keyword(df_sector, ["主力净流入", "净流入"])
+                name_col = self._get_column_by_keyword(df_sector, ["板块名称", "名称", "板块"])
 
-            if func_sector:
-                # 尝试调用，通常需要 indicator="资金流向"
-                try:
-                    df_sector = func_sector(indicator="资金流向")
-                except:
-                    df_sector = func_sector() # 盲试
-
-                if not df_sector.empty:
-                    # 智能找列名：找包含 "净流入" 或 "主力" 的列
-                    sort_col = None
-                    for col in df_sector.columns:
-                        if "主力" in str(col) and "流入" in str(col):
-                            sort_col = col
-                            break
+                if sort_col and name_col:
+                    # 按资金流入倒序
+                    df_top = df_sector.sort_values(by=sort_col, ascending=False).head(5)
                     
-                    if sort_col:
-                        df_top = df_sector.sort_values(by=sort_col, ascending=False).head(5)
-                        sectors = []
-                        for _, row in df_top.iterrows():
-                            # 假设第一列是板块名
-                            name = row.iloc[0] if isinstance(row.iloc[0], str) else row.iloc[1]
-                            val = float(row[sort_col]) / 100000000 # 转亿
-                            sectors.append(f"{name}({val:.1f}亿)")
-                        market_data['top_sectors'] = sectors
-                        logger.info(f"✅ 主力热点获取成功: {sectors}")
+                    sectors = []
+                    for _, row in df_top.iterrows():
+                        s_name = row[name_col]
+                        s_val_raw = float(row[sort_col])
+                        
+                        # 板块接口通常返回的是 "元" (很大一串数字)
+                        # 比如 1500000000 -> 15.0亿
+                        s_val_billion = round(s_val_raw / 100000000, 2)
+                        
+                        sectors.append(f"{s_name}({s_val_billion}亿)")
+                    
+                    market_data['top_sectors'] = sectors
+                    logger.info(f"✅ 主力板块锁定: {sectors}")
+                else:
+                    logger.warning(f"❌ 板块列名匹配失败: {df_sector.columns}")
         except Exception as e:
-            logger.error(f"板块资金模块异常: {e}")
+            logger.error(f"板块资金获取异常: {e}")
 
         return market_data
