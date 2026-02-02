@@ -13,12 +13,12 @@ class NewsAnalyst:
         
         genai.configure(api_key=api_key)
         
-        # 【关键修改】定义一个模型备选列表，按顺序尝试
+        # 【最终修复】根据你的日志，精准填入可用的模型
         self.candidate_models = [
-            'gemini-1.5-flash',       # 首选：最新、快、免费额度高
-            'gemini-1.5-flash-latest',
-            'gemini-pro',             # 备选：老牌经典
-            'gemini-1.0-pro'
+            'gemini-2.5-flash',       # 日志里显示的首选，2026年的主流
+            'gemini-2.0-flash',       # 备选
+            'gemini-flash-latest',    # 通用别名 (永远指向最新版)
+            'gemini-pro-latest'       # 保底
         ]
         self.model = None
 
@@ -30,14 +30,14 @@ class NewsAnalyst:
             try:
                 # 尝试初始化
                 m = genai.GenerativeModel(model_name)
-                # 简单测试一下是否存在
-                logger.info(f"尝试加载模型: {model_name}")
+                logger.info(f"✅ 成功加载模型: {model_name}")
                 return m
             except Exception:
                 continue
         
-        # 如果都失败了，默认返回 flash，并在后续报错中处理
-        return genai.GenerativeModel('gemini-1.5-flash')
+        # 如果都失败了，盲猜一个
+        logger.warning("备选模型都失败，尝试使用 gemini-flash-latest")
+        return genai.GenerativeModel('gemini-flash-latest')
 
     @retry(retries=3)
     def fetch_news_titles(self, keyword):
@@ -86,13 +86,5 @@ class NewsAnalyst:
             return int(result.get('score', 5)), result.get('summary', 'AI未提供总结')
         
         except Exception as e:
-            # 【调试神器】如果报错，打印出当前账号可用的所有模型列表
             logger.error(f"Gemini 调用失败: {e}")
-            try:
-                logger.info("正在列出账号可用模型，请在日志中查看...")
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        logger.info(f"可用模型: {m.name}")
-            except:
-                pass
             return 5, "AI分析异常，默认中性"
