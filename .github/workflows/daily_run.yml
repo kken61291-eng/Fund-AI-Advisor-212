@@ -2,12 +2,10 @@ name: Daily AI Fund Advisor
 
 on:
   schedule:
-    # 重点修改这里：
-    # Cron 语法: 分 时 日 月 周
-    # UTC 01:30 = 北京时间 09:30
-    # 1-5 代表周一到周五
+    # 北京时间 09:30 = UTC 01:30
+    # 周一到周五运行
     - cron: '30 1 * * 1-5'
-  workflow_dispatch: # 保留手动触发按钮，方便随时测试
+  workflow_dispatch: # 手动触发按钮
 
 jobs:
   analyze_and_report:
@@ -33,8 +31,11 @@ jobs:
 
     - name: Run Analysis
       env:
+        # 【这里是修复的关键】
+        # 必须显式将 Secrets 传递给环境变量，Python 才能读到
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         MAIL_USER: ${{ secrets.MAIL_USER }}
         MAIL_PASS: ${{ secrets.MAIL_PASS }}
+        TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}  # <--- 新增这一行
       run: |
         python main.py
