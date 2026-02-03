@@ -3,9 +3,8 @@ name: Daily AI Fund Advisor
 on:
   schedule:
     # 北京时间 09:30 = UTC 01:30
-    # 周一到周五运行
     - cron: '30 1 * * 1-5'
-  workflow_dispatch: # 手动触发按钮
+  workflow_dispatch:
 
 jobs:
   analyze_and_report:
@@ -26,16 +25,17 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        # 强制更新 google 库
-        pip install --upgrade google-generativeai
 
     - name: Run Analysis
       env:
-        # 【这里是修复的关键】
-        # 必须显式将 Secrets 传递给环境变量，Python 才能读到
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # --- AI 配置 (硅基流动) ---
+        LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+        LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        
+        # --- 其他配置 ---
         MAIL_USER: ${{ secrets.MAIL_USER }}
         MAIL_PASS: ${{ secrets.MAIL_PASS }}
-        TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}  # <--- 新增这一行
+        TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       run: |
         python main.py
