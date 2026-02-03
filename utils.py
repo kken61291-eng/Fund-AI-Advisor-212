@@ -3,16 +3,15 @@ import logging
 import functools
 import requests
 from requests.exceptions import RequestException, ConnectionError, Timeout
-# 🛡️ 修复点：从标准库导入 RemoteDisconnected，不再依赖 urllib3 版本
 from http.client import RemoteDisconnected
+# 引入 formataddr 用于规范邮件头
+from email.utils import formataddr
 
-# 尝试导入 ProtocolError，如果环境不支持则定义为普通 Exception 避免报错
 try:
     from urllib3.exceptions import ProtocolError
 except ImportError:
     class ProtocolError(Exception): pass
 
-# 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -22,20 +21,17 @@ logger = logging.getLogger(__name__)
 def retry(retries=3, backoff_factor=2):
     """
     增强版重试装饰器
-    backoff_factor: 失败后等待时间的倍数 (2s, 4s, 8s...)
     """
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             last_exception = None
-            delay = 2 # 初始等待2秒
-            
+            delay = 2 
             for i in range(retries + 1):
                 try:
                     return func(*args, **kwargs)
                 except (RequestException, ConnectionError, Timeout, ProtocolError, RemoteDisconnected, Exception) as e:
                     last_exception = e
-                    # 记录具体的错误类型，方便调试
                     error_name = type(e).__name__
                     if i < retries:
                         sleep_time = delay * (backoff_factor ** i)
@@ -43,13 +39,14 @@ def retry(retries=3, backoff_factor=2):
                         time.sleep(sleep_time)
                     else:
                         logger.error(f"❌ 重试耗尽，最终失败: {error_name} - {e}")
-            
             return None 
         return wrapper
     return decorator
 
 def send_email(subject, content):
-    """发送邮件功能"""
+    """
+    发送邮件功能 (Header 格式修复版)
+    """
     import smtplib
     from email.mime.text import MIMEText
     from email.header import Header
@@ -62,12 +59,17 @@ def send_email(subject, content):
         logger.warning("未配置邮件账户，跳过发送")
         return
 
+    # 简单的收件人逻辑：发给自己
     receivers = [sender]
 
     try:
         message = MIMEText(content, 'html', 'utf-8')
-        message['From'] = Header(f"AI Advisor <{sender}>", 'utf-8')
-        message['To'] = Header("Commander", 'utf-8')
+        
+        # [修复点] 使用 formataddr 构造标准的 From/To 头
+        # 这样 QQ/腾讯企业邮箱就不会报 550 Invalid Header 了
+        message['From'] = formataddr(("AI Advisor", sender))
+        message['To'] = formataddr(("Commander", sender))
+        
         message['Subject'] = Header(subject, 'utf-8')
 
         # 尝试连接常见邮箱端口
