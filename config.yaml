@@ -1,13 +1,13 @@
 global:
-  base_invest_amount: 1000  # 建议提高单笔基准，适应ETF 1手(100股)的门槛
-  max_daily_invest: 5000
+  base_invest_amount: 1000  # 单笔基准
+  max_daily_invest: 5000    # 单日上限
 
 funds:
-  # === 核心底仓 (长期持有，跌了只减不轻，除非极度崩盘) ===
+  # === 核心底仓 (Core) ===
   - code: "515080"
     name: "红利ETF"
     sector_keyword: "红利"
-    strategy_type: "core"   # 核心资产标记
+    strategy_type: "core"
 
   - code: "510300"
     name: "沪深300ETF"
@@ -19,7 +19,7 @@ funds:
     sector_keyword: "黄金"
     strategy_type: "core"
 
-  # === 卫星进攻 (波段操作，严格止盈止损) ===
+  # === 卫星进攻 (Satellite) ===
   - code: "512690"
     name: "酒ETF"
     sector_keyword: "白酒"
@@ -43,7 +43,7 @@ funds:
   - code: "512800"
     name: "银行ETF"
     sector_keyword: "银行"
-    strategy_type: "satellite" # 银行虽稳，但在ETF里算行业轮动
+    strategy_type: "satellite"
 
   - code: "512980"
     name: "传媒ETF"
@@ -60,8 +60,9 @@ funds:
     sector_keyword: "光伏"
     strategy_type: "satellite"
 
-  - code: "899050" 
-    name: "北证50指数" # 北证目前主流是场外，若有场内ETF请替换，此处暂保留指数代码作参考，实际交易请用 599050(招商) 等
+  # [修复点] 899050 -> 599050 (南方北证50ETF)
+  - code: "599050" 
+    name: "北证50ETF"
     sector_keyword: "北证"
     strategy_type: "satellite"
 
