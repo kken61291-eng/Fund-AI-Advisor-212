@@ -9,17 +9,20 @@ class NewsAnalyst:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.base_url = os.getenv("LLM_BASE_URL", "https://api.siliconflow.cn/v1") 
-        # 默认使用 Kimi，也可以通过环境变量覆盖
-        self.model_name = os.getenv("LLM_MODEL", "Pro/moonshotai/Kimi-K2.5") 
+        
+        # 修正：优先读取环境变量，如果没有设置，才默认回退到 DeepSeek
+        # 这样您在 YAML 里改了 LLM_MODEL，这里就会自动生效
+        self.model_name = os.getenv("LLM_MODEL", "deepseek-ai/DeepSeek-V3") 
         
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         else:
             self.client = None
+            logger.warning("未配置 LLM_API_KEY，AI 分析功能将不可用")
 
     @retry(retries=3)
     def fetch_news_titles(self, keyword):
-        """抓取谷歌新闻RSS"""
+        """抓取谷歌新闻RSS (全量版逻辑)"""
         # 针对不同板块优化搜索词，获取更精准的行业催化剂
         if "红利" in keyword: search_q = "A股 红利指数 股息率"
         elif "白酒" in keyword: search_q = "白酒 茅台 批发价 库存"
@@ -28,6 +31,8 @@ class NewsAnalyst:
         elif "医疗" in keyword: search_q = "医药集采 创新药 出海"
         elif "黄金" in keyword: search_q = "黄金价格 避险 美元"
         elif "半导体" in keyword: search_q = "半导体 周期 国产替代"
+        elif "光伏" in keyword: search_q = "光伏 产能 过剩 价格"
+        elif "银行" in keyword: search_q = "银行 息差 坏账"
         else: search_q = keyword + " 行业分析"
 
         url = f"https://news.google.com/rss/search?q={search_q} when:2d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
@@ -42,7 +47,7 @@ class NewsAnalyst:
 
     def analyze_fund_v4(self, fund_name, tech_data, market_ctx, news_titles):
         """
-        V9.1 Kimi 深度分析引擎
+        V9.1 深度分析引擎 (适配 Kimi-K2.5 / DeepSeek)
         """
         if not self.client:
             return {"comment": "AI 未配置", "risk_alert": ""}
@@ -58,7 +63,7 @@ class NewsAnalyst:
         macro_sentiment = market_ctx.get('north_label', '震荡')
         macro_val = market_ctx.get('north_money', '0%')
 
-        # --- 🚀 V9.1 Prompt: 要求 Kimi 给出关键信息 ---
+        # --- Prompt: 针对 Kimi 优化的长逻辑推理 ---
         prompt = f"""
         # Role
         你是一位拥有20年经验的**首席宏观对冲策略师**。你的特点是：**拒绝废话，只谈逻辑，洞察主力意图**。
@@ -82,7 +87,7 @@ class NewsAnalyst:
            - 限 60 字以内。
            - **必须包含**：技术面与基本面的共振点（或背离点）。
            - **关键信息**：主力是在洗盘还是出货？当前是左侧博弈还是右侧跟随？
-           - 风格犀利：例如“虽然RSI超卖，但行业库存高企，警惕低位陷阱”或“周线趋势向上叠加利好落地，是绝佳的倒车接人机会”。
+           - 风格犀利：不要说"建议关注"，要说"倒车接人机会"或"诱多出货风险"。
         
         2. **risk_alert (关键风控)**:
            - 限 15 字以内。
@@ -106,6 +111,7 @@ class NewsAnalyst:
                 temperature=0.3 # 保持理性
             )
             content = response.choices[0].message.content
+            # 清洗可能的 markdown 符号
             content = content.replace('```json', '').replace('```', '').strip()
             return json.loads(content)
         except Exception as e:
