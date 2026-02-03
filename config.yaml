@@ -1,22 +1,7 @@
-# 全局设置
 global:
   base_invest_amount: 200  # 基础定投金额
   max_daily_invest: 1000   # 单日上限
-  retry_times: 3
 
-# V4.0 策略参数
-strategy:
-  # 预测性指标
-  etf_premium_threshold: 3.0   # 溢价率 > 3% 禁止买入 (针对ETF)
-  
-  # 多周期共振
-  enable_weekly_filter: true   # 开启周线趋势过滤
-  
-  # 基础指标
-  rsi_buy_threshold: 35    # 超卖
-  rsi_sell_threshold: 70   # 超买
-
-# 基金列表 (全量 19 只)
 funds:
   # --- 贵金属/商品 ---
   - code: "000307"
@@ -26,7 +11,7 @@ funds:
 
   # --- 行业主题 (A股) ---
   - code: "020274"
-    name: "富国中证细分化工产业主题ETF联接C"
+    name: "富国化工产业ETF联接C"
     type: "fund"
     sector_keyword: "化工行业"
 
@@ -36,22 +21,22 @@ funds:
     sector_keyword: "银行板块"
 
   - code: "004753"
-    name: "广发中证传媒ETF联接C"
+    name: "广发传媒ETF联接C"
     type: "fund"
     sector_keyword: "传媒游戏"
 
   - code: "001717"
-    name: "工银瑞信前沿医疗股票A"
+    name: "工银前沿医疗股票A"
     type: "fund"
     sector_keyword: "医药医疗"
 
   - code: "161725"
-    name: "招商中证白酒指数(LOF)A"
+    name: "招商白酒指数(LOF)A"
     type: "fund"
     sector_keyword: "白酒茅台"
 
   - code: "012414"
-    name: "招商中证白酒指数C"
+    name: "招商白酒指数C"
     type: "fund"
     sector_keyword: "白酒消费"
 
@@ -67,32 +52,32 @@ funds:
 
   # --- 宽基/指数增强 ---
   - code: "008114"
-    name: "天弘中证红利低波动100ETF联接A"
+    name: "天弘红利低波100ETF联接"
     type: "fund"
     sector_keyword: "红利低波"
 
   - code: "017555"
-    name: "永赢北证50成份指数A"
+    name: "永赢北证50指数A"
     type: "fund"
     sector_keyword: "北证50"
 
   - code: "006532"
-    name: "汇安中证500指数增强C"
+    name: "汇安中证500增强C"
     type: "fund"
     sector_keyword: "中证500"
 
   # --- QDII (海外/港股) ---
   - code: "006479"
-    name: "广发纳斯达克100ETF联接(QDII)C"
+    name: "广发纳指100ETF联接C"
     type: "fund"
     sector_keyword: "纳斯达克"
 
   - code: "012349"
-    name: "天弘恒生科技ETF联接(QDII)C"
+    name: "天弘恒生科技ETF联接C"
     type: "fund"
     sector_keyword: "恒生科技"
 
-  # --- 混合/策略/其他 ---
+  # --- 混合/策略 ---
   - code: "163822"
     name: "中银主题策略混合A"
     type: "fund"
@@ -112,8 +97,3 @@ funds:
     name: "东兴未来价值混合C"
     type: "fund"
     sector_keyword: "价值投资"
-
-  - code: "004972"
-    name: "长城收益宝货币A"
-    type: "fund"
-    sector_keyword: "货币基金"
