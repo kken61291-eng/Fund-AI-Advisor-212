@@ -44,6 +44,6 @@ class MarketScanner:
             return [{"title": "宏观数据暂时不可用", "source": "System"}]
 
     def get_market_sentiment(self):
-        # 保留原有接口兼容性，但在 V11.2 中主要使用 get_macro_news
+        # 兼容旧接口
         news = self.get_macro_news()
         return f"{news[0]['title']} - {news[0]['source']}"
