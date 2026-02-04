@@ -1,6 +1,7 @@
 import akshare as ak
 import yfinance as yf
 import pandas as pd
+import socket
 import time
 from utils import retry, logger
 
@@ -10,8 +11,10 @@ class DataFetcher:
 
     @retry(retries=1, backoff_factor=1)
     def _fetch_em(self, code):
-        """来源1: 东方财富 (国内IP首选，GitHub易挂)"""
+        """来源1: 东方财富"""
         try:
+            # 临时设置超时防止假死
+            socket.setdefaulttimeout(15)
             df = ak.fund_etf_hist_em(symbol=code, period="daily", adjust="qfq")
             df = df.rename(columns={
                 "日期": "date", "收盘": "close", "最高": "high", 
@@ -19,76 +22,81 @@ class DataFetcher:
             })
             return df
         except: return None
+        finally:
+            # 恢复默认超时，以免影响后续 LLM 调用
+            socket.setdefaulttimeout(None)
 
     @retry(retries=1, backoff_factor=1)
     def _fetch_sina(self, code):
-        """来源2: 新浪财经 (备用)"""
+        """来源2: 新浪财经"""
         try:
+            socket.setdefaulttimeout(15)
             symbol = f"sh{code}" if code.startswith("5") else f"sz{code}"
             df = ak.stock_zh_a_daily(symbol=symbol, adjust="qfq")
             return df
         except: return None
+        finally:
+            socket.setdefaulttimeout(None)
 
-    @retry(retries=3, backoff_factor=2)
+    @retry(retries=2, backoff_factor=2)
     def _fetch_yahoo(self, code):
         """
-        来源3: Yahoo Finance (国际通用，GitHub可用，完全免费)
+        来源3: Yahoo Finance (国际通用)
+        [V10.6] 增加 socket 超时控制，防止卡死
         """
         try:
-            # 1. 转换代码格式
-            # 上海(5/6开头) -> .SS, 深圳(1/0/3开头) -> .SZ
+            # ⚠️ 关键：设置 20秒 强制超时
+            # 如果 Yahoo 20秒不说话，直接杀掉连接，抛出异常
+            socket.setdefaulttimeout(20)
+            
+            # 转换代码
             if code.startswith('5') or code.startswith('6'):
                 yahoo_symbol = f"{code}.SS"
             else:
                 yahoo_symbol = f"{code}.SZ"
             
-            # 2. 获取数据 (下载最近1年，确保有足够周线)
-            # progress=False 关闭进度条防止日志混乱
+            # 获取数据
             ticker = yf.Ticker(yahoo_symbol)
             df = ticker.history(period="1y", auto_adjust=True)
             
             if df is None or df.empty:
                 return None
             
-            # 3. 清洗数据
-            # Yahoo 返回的索引就是 Date，列名是 Open, High, Low, Close, Volume
+            # 清洗
             df = df.reset_index()
             df = df.rename(columns={
-                "Date": "date", 
-                "Open": "open", 
-                "High": "high", 
-                "Low": "low", 
-                "Close": "close", 
-                "Volume": "volume"
+                "Date": "date", "Open": "open", "High": "high", 
+                "Low": "low", "Close": "close", "Volume": "volume"
             })
             
-            # 转换时区，去掉时分秒
             df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None)
-            
             return df
+            
         except Exception as e:
             logger.error(f"Yahoo 获取失败 {code}: {e}")
             return None
+        finally:
+            # ⚠️ 必须恢复！否则会影响 OpenAI/Kimi 的长文本生成
+            socket.setdefaulttimeout(None)
 
     def get_fund_history(self, code):
         """
-        V10.4 逻辑: EM -> Sina -> Yahoo(救世主)
+        V10.6 逻辑: EM -> Sina -> Yahoo
         """
         df = None
         source_name = ""
 
-        # 1. 尝试国内接口 (EM)
+        # 1. EM
         df = self._fetch_em(code)
         if df is not None and not df.empty: source_name = "EM"
         
-        # 2. 尝试国内接口 (Sina)
+        # 2. Sina
         if df is None or df.empty:
             df = self._fetch_sina(code)
             if df is not None and not df.empty: source_name = "Sina"
 
-        # 3. [核心] 尝试 Yahoo Finance
+        # 3. Yahoo (带超时保护)
         if df is None or df.empty:
-            # logger.info(f"启动 Yahoo 救援: {code}")
             df = self._fetch_yahoo(code)
             if df is not None and not df.empty: source_name = "Yahoo"
 
@@ -97,7 +105,6 @@ class DataFetcher:
             return None
 
         try:
-            # 标准化处理
             if 'volume' not in df.columns: df['volume'] = 0
             
             df['date'] = pd.to_datetime(df['date'])
@@ -108,12 +115,8 @@ class DataFetcher:
             
             df = df.sort_values('date').set_index('date')
             
-            # 生成周线
             weekly_df = df.resample('W-FRI').agg({
-                'close': 'last', 
-                'high': 'max', 
-                'low': 'min', 
-                'volume': 'sum'
+                'close': 'last', 'high': 'max', 'low': 'min', 'volume': 'sum'
             }).dropna()
             
             if len(weekly_df) < 5: return None
