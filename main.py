@@ -72,17 +72,17 @@ def calculate_position_v11(tech_data, ai_adjustment, base_amount, max_daily, pos
         
     return final_amount, label, is_sell, sell_value
 
-def render_html_report(macro_news_list, funds_results, daily_total_cap, cio_review):
+def render_html_report(macro_news_list, funds_results, daily_total_cap, cio_review, advisor_review):
     """
-    V11.2 UI: 增加多条宏观新闻展示
+    V11.3 UI: 宫廷边框 + 顾问区域 + 宏观新闻UI修复
     """
-    # 渲染宏观新闻列表 HTML
+    # 宏观新闻 HTML
     macro_html = ""
     for news in macro_news_list:
         macro_html += f"""
-        <div style="font-size:11px;color:#bcaaa4;margin-bottom:4px;border-bottom:1px dashed #3e2723;padding-bottom:2px;">
-            <span style="color:#D4AF37;">●</span> {news['title']} 
-            <span style="color:#5d4037;float:right;">[{news['source']}]</span>
+        <div style="font-size:12px;color:#e0e0e0;margin-bottom:6px;border-bottom:1px dashed #5d4037;padding-bottom:4px;">
+            <span style="color:#D4AF37;margin-right:5px;">●</span>{news['title']} 
+            <span style="color:#a1887f;float:right;font-size:10px;">[{news['source']}]</span>
         </div>
         """
 
@@ -163,12 +163,20 @@ def render_html_report(macro_news_list, funds_results, daily_total_cap, cio_revi
     <head>
     <style>
         body {{ 
-            background: linear-gradient(135deg, #1a0505 0%, #000000 100%); 
+            background: #000;
             color: #f0e6d2; 
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; 
-            max-width: 640px; margin: 0 auto; padding: 20px;
-            background-attachment: fixed;
+            max-width: 660px; margin: 0 auto; padding: 20px;
         }}
+        /* [V11.3] 主容器：双层鎏金边框，增加庄重感 */
+        .main-container {{
+            border: 3px double #D4AF37; /* 双层金边 */
+            border-radius: 8px;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a0505 0%, #000000 100%);
+            box-shadow: 0 0 30px rgba(212,175,55,0.1);
+        }}
+        
         .header {{ text-align: center; border-bottom: 2px solid #D4AF37; padding-bottom: 20px; margin-bottom: 25px; }}
         .title {{ 
             color: #D4AF37; margin: 0; font-size: 28px; letter-spacing: 2px; font-weight: 300; 
@@ -177,18 +185,18 @@ def render_html_report(macro_news_list, funds_results, daily_total_cap, cio_revi
         }}
         .subtitle {{ font-size: 11px; color: #8d6e63; margin-top: 8px; letter-spacing: 1px; }}
         
-        /* 宏观新闻面板 */
+        /* [V11.3] 修复宏观新闻面板的可读性 */
         .macro-panel {{
-            background: rgba(62, 39, 35, 0.3);
+            background: rgba(0, 0, 0, 0.6); /* 更深的背景 */
             border: 1px solid #5d4037;
             border-radius: 4px;
-            padding: 10px;
-            margin-top: 15px;
+            padding: 15px;
+            margin-top: 20px;
             text-align: left;
         }}
         .macro-title {{
-            font-size: 10px; color: #8d6e63; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;
-            border-bottom: 1px solid #5d4037; padding-bottom: 2px;
+            font-size: 11px; color: #D4AF37; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;
+            border-bottom: 1px solid #5d4037; padding-bottom: 4px; font-weight: bold;
         }}
 
         .cio-paper {{ 
@@ -205,30 +213,51 @@ def render_html_report(macro_news_list, funds_results, daily_total_cap, cio_revi
             text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             letter-spacing: 1px;
         }}
+        
+        /* [V11.3] 传奇顾问区域 */
+        .advisor-paper {{
+            background: #1e1b18; 
+            border-left: 4px solid #8d6e63; 
+            padding: 20px; 
+            margin-bottom: 25px; 
+            font-size: 14px; line-height: 1.6; color: #e0e0e0;
+            background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.01) 0px, rgba(255,255,255,0.01) 2px, transparent 2px, transparent 4px);
+        }}
+        .advisor-title {{
+            color: #d7ccc8; font-weight: bold; font-size: 16px; margin-bottom: 10px;
+            font-family: 'Times New Roman', serif; border-bottom: 1px dashed #5d4037; padding-bottom: 5px;
+        }}
+
         .footer {{ text-align: center; font-size: 10px; color: #5d4037; margin-top: 40px; font-family: serif; }}
     </style>
     </head>
     <body>
-        <div class="header">
-            <h1 class="title">GILDED QUANT</h1>
-            <div class="subtitle">V11.2 MACRO-RADAR ENGINE</div>
-            
-            <div class="macro-panel">
-                <div class="macro-title">GLOBAL MACRO BRIEF</div>
-                {macro_html}
+        <div class="main-container">
+            <div class="header">
+                <h1 class="title">GILDED QUANT</h1>
+                <div class="subtitle">V11.3 SAGE & COURT EDITION</div>
+                
+                <div class="macro-panel">
+                    <div class="macro-title">GLOBAL MACRO RADAR</div>
+                    {macro_html}
+                </div>
             </div>
-        </div>
-        
-        <div class="cio-paper">
-            <div class="cio-seal">CIO APPROVED</div>
-            {cio_review}
-        </div>
-        
-        {rows}
-        
-        <div class="footer">
-            EST. 2026 | POWERED BY KIMI & YAHOO FINANCE <br>
-            "In Math We Trust, By AI We Verify."
+            
+            <div class="cio-paper">
+                <div class="cio-seal">CIO APPROVED</div>
+                {cio_review}
+            </div>
+            
+            <div class="advisor-paper">
+                {advisor_review}
+            </div>
+            
+            {rows}
+            
+            <div class="footer">
+                EST. 2026 | POWERED BY KIMI & YAHOO FINANCE <br>
+                "In Math We Trust, By AI We Verify."
+            </div>
         </div>
     </body></html>
     """
@@ -239,19 +268,16 @@ def main():
     scanner = MarketScanner()
     tracker = PortfolioTracker() 
     
-    logger.info(">>> [V11.2] 启动宏观雷达与CIO审计 (Macro Radar)...")
+    logger.info(">>> [V11.3] 启动传奇顾问与宫廷UI...")
     tracker.confirm_trades()
     
     try: analyst = NewsAnalyst()
     except: analyst = None
 
-    # 获取宏观新闻列表 (V11.2 新增)
     macro_news_list = scanner.get_macro_news()
-    # 将列表转为字符串供 AI 分析使用
     market_ctx_str = " | ".join([f"{n['title']}" for n in macro_news_list])
     
     funds_results = []
-    
     cio_summary_lines = [f"市场环境: {market_ctx_str}"]
     
     BASE_AMT = config['global']['base_invest_amount']
@@ -303,15 +329,18 @@ def main():
             logger.error(f"Err {fund['name']}: {e}")
 
     cio_review = ""
+    advisor_review = ""
     if analyst and funds_results:
-        logger.info(">>> CIO Final Seal...")
+        logger.info(">>> CIO & Sage Auditing...")
+        # CIO 审计
         cio_review = analyst.review_report("\n".join(cio_summary_lines))
+        # [V11.3] 传奇顾问审计
+        advisor_review = analyst.advisor_review("\n".join(cio_summary_lines), market_ctx_str)
 
     if funds_results:
         funds_results.sort(key=lambda x: -x['tech'].get('final_score', 0))
-        # 传入 macro_news_list 而不是单行文本
-        html = render_html_report(macro_news_list, funds_results, MAX_DAILY, cio_review)
-        send_email("🏆 鎏金量化 V11.2 战略内参", html)
+        html = render_html_report(macro_news_list, funds_results, MAX_DAILY, cio_review, advisor_review)
+        send_email("🏆 鎏金量化 V11.3 战略内参", html)
 
 if __name__ == "__main__":
     main()
