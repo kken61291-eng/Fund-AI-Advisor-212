@@ -14,7 +14,6 @@ class NewsAnalyst:
 
     @retry(retries=2)
     def fetch_news_titles(self, keyword):
-        # 保持 V11.0 的精准搜索逻辑
         search_q = keyword + " 行业分析"
         if "红利" in keyword: search_q = "A股 红利指数 股息率"
         elif "美股" in keyword: search_q = "美联储 降息 纳斯达克 宏观"
@@ -29,7 +28,7 @@ class NewsAnalyst:
         except: return []
 
     def analyze_fund_v4(self, fund_name, tech, market_ctx, news):
-        # 保持 V11.0 的逻辑修正层不变
+        # 保持 V11.0 的逻辑修正层
         if not self.client: return {"comment": "AI Offline", "risk_alert": "", "adjustment": 0}
 
         tech_context = f"""
@@ -75,6 +74,7 @@ class NewsAnalyst:
             return {"comment": "AI服务异常", "risk_alert": "无", "adjustment": 0}
 
     def review_report(self, summary):
+        # CIO 审计逻辑保持不变
         if not self.client: return "<p>CIO Offline</p>"
         
         prompt = f"""
@@ -99,3 +99,42 @@ class NewsAnalyst:
             )
             return res.choices[0].message.content.strip().replace('```html', '').replace('```', '')
         except: return "CIO Audit Failed."
+
+    def advisor_review(self, summary, market_ctx):
+        """
+        V11.3 新增：50年经验传奇顾问 (The Sage)
+        专注绝对收益和场外基金建议
+        """
+        if not self.client: return ""
+
+        prompt = f"""
+        # Role
+        你是一位在市场生存了50年的**传奇民间投资顾问**。你不仅懂ETF，更深知场外基金（Mutual Funds）的坑（如赎回费、T+1确认、偷吃净值）。
+        你的宗旨：**绝对收益，规避风险**。你对那些花里胡哨的理论嗤之以鼻，只看钱能不能落袋。
+
+        # Context
+        宏观: {market_ctx}
+        今日ETF策略:
+        {summary}
+
+        # Task
+        请以“老法师”的口吻，给**场外基金持有者**写一段建议。
+        重点关注：
+        1. **ETF与场外的时间差**：如果ETF大涨，提醒场外现在买可能是“接盘”高净值。
+        2. **落袋为安**：如果市场不稳，强调现金的重要性。
+        3. **板块映射**：把ETF代码映射到具体的板块逻辑（例如：看到纳指ETF涨，提醒定投QDII的要拿住）。
+
+        # Output HTML (无markdown)
+        结构:
+        <div class='advisor-title'>🎓 传奇顾问独立意见 (50-Year Sage)</div>
+        <p><strong>给场外基民的话：</strong>...</p>
+        <p><strong>绝对收益锦囊：</strong>...</p>
+        """
+        try:
+            res = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6 # 顾问的语气可以更生动一点
+            )
+            return res.choices[0].message.content.strip().replace('```html', '').replace('```', '')
+        except: return "Advisor Offline."
