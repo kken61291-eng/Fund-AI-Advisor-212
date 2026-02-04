@@ -119,10 +119,10 @@ funds:
     sector_keyword: "传媒 短剧"
     strategy_type: "satellite"
 
-  - code: "599050"
-    name: "北证50ETF"
-    sector_keyword: "北证 专精特新"
-    strategy_type: "satellite" # 已修复为场内代码
+# - code: "599050"
+#   name: "北证50ETF"
+#   sector_keyword: "北证 专精特新"
+#   strategy_type: "satellite"
 
   - code: "512100"
     name: "中证1000ETF"
