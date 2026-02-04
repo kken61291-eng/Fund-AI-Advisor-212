@@ -1,130 +1,74 @@
 global:
-  base_invest_amount: 1000  # 单笔基准 (建议根据总资金量调整，如资金少可设为500)
-  max_daily_invest: 5000    # 单日上限
-
+  base_invest_amount: 1000   # 单笔基准 (可根据您的资金量调整，如2000或5000)
+  max_daily_invest: 5000     # 单日上限
+  
 funds:
   # ==========================================
-  # 🪐 核心资产 (Core) - 全球配置压舱石
-  # 策略：长期持有，穿越牛熊，跌了定投
+  # 🏛️ 核心底仓 (Core Assets) - 60%
+  # 策略：跨周期持有，黄金+红利+大盘
   # ==========================================
+  - code: "518880"
+    name: "黄金ETF"
+    # 关键词包含“去美元化”，引导AI关注央行购金
+    sector_keyword: "黄金价格 避险 央行购金 去美元化"
+    strategy_type: "core"
+
   - code: "515080"
     name: "红利ETF"
-    sector_keyword: "红利 股息"
+    # 关键词包含“财政兜底”，引导AI关注国企改革
+    sector_keyword: "红利 股息率 国企改革 债券收益率"
     strategy_type: "core"
 
   - code: "510300"
     name: "沪深300ETF"
-    sector_keyword: "A股大盘"
+    sector_keyword: "A股大盘 核心资产 名义GDP"
     strategy_type: "core"
 
   - code: "513500"
     name: "标普500ETF"
-    sector_keyword: "美股大盘 降息"
-    strategy_type: "core"  # 新增：美股核心，比纳指更稳
-
-  - code: "518880"
-    name: "黄金ETF"
-    sector_keyword: "黄金 避险"
+    sector_keyword: "美股 降息 AI巨头 软着陆"
     strategy_type: "core"
 
   # ==========================================
-  # 🚀 卫星：硬核科技 (Tech Growth)
-  # 策略：高弹性博弈，严格止盈止损
+  # 🚀 卫星进攻：AI算力革命 (Tech Core) - 20%
+  # 策略：聚焦 2026 确定性最高的 CPO/硬件
   # ==========================================
+  - code: "515880"
+    name: "AI通信ETF" 
+    # 注：这是A股含“光模块(CPO)”最纯的ETF，持有中际旭创/新易盛
+    # 关键词精准指向“光模块”和“资本开支”
+    sector_keyword: "光模块 CPO 算力 6G 资本开支"
+    strategy_type: "satellite"
+
   - code: "159941"
     name: "纳指ETF"
-    sector_keyword: "纳斯达克 科技股"
-    strategy_type: "satellite"
-
-  - code: "513130"
-    name: "恒生科技ETF"
-    sector_keyword: "港股科技 互联网"
-    strategy_type: "satellite"
-
-  - code: "512480"
-    name: "半导体ETF"
-    sector_keyword: "半导体 芯片"
-    strategy_type: "satellite"
-
-  - code: "562500"
-    name: "机器人ETF"
-    sector_keyword: "机器人 人工智能"
-    strategy_type: "satellite" # 新增：AI硬件端
-
-  - code: "515790"
-    name: "光伏ETF"
-    sector_keyword: "光伏 新能源"
-    strategy_type: "satellite"
-
-  - code: "515700"
-    name: "新能源车ETF"
-    sector_keyword: "新能源汽车 锂电池"
-    strategy_type: "satellite" # 新增：补全产业链
-
-  - code: "159992"
-    name: "创新药ETF"
-    sector_keyword: "医药 生物科技"
+    sector_keyword: "纳斯达克 英伟达 微软 AI应用"
     strategy_type: "satellite"
 
   # ==========================================
-  # 🔄 卫星：周期与金融 (Cyclical & Finance)
-  # 策略：博弈经济复苏与通胀
+  # 🛡️ 卫星防御：地缘与安全 (Defense) - 10%
+  # 策略：对冲地缘风险
   # ==========================================
-  - code: "512690"
-    name: "酒ETF"
-    sector_keyword: "白酒 消费"
+  - code: "512660"
+    name: "军工ETF"
+    sector_keyword: "军工 军费 航空航天 地缘政治"
     strategy_type: "satellite"
 
+  # ==========================================
+  # 🔄 战术机动：周期与博弈 (Cyclical) - 10%
+  # 策略：不长期持有，仅做波段
+  # ==========================================
   - code: "512880"
     name: "证券ETF"
-    sector_keyword: "券商 牛市旗手"
-    strategy_type: "satellite" # 新增：博弈牛市Beta
+    sector_keyword: "券商 成交量 牛市旗手"
+    strategy_type: "satellite"
 
   - code: "512800"
     name: "银行ETF"
-    sector_keyword: "银行 息差"
+    sector_keyword: "银行 净息差 避险"
     strategy_type: "satellite"
 
   - code: "515220"
     name: "煤炭ETF"
-    sector_keyword: "煤炭 能源"
-    strategy_type: "satellite" # 新增：上游资源抗通胀
-
-  - code: "516160"
-    name: "化工ETF"
-    sector_keyword: "化工 材料"
-    strategy_type: "satellite"
-
-  # ==========================================
-  # 🌍 卫星：全球视野与特色 (Global & Special)
-  # 策略：分散国别风险与地缘对冲
-  # ==========================================
-  - code: "513520"
-    name: "日经ETF"
-    sector_keyword: "日本股市"
-    strategy_type: "satellite" # 新增：东亚配置
-
-  - code: "512660"
-    name: "军工ETF"
-    sector_keyword: "军工 国防"
-    strategy_type: "satellite" # 新增：地缘防御
-
-  - code: "516770"
-    name: "游戏动漫ETF"
-    sector_keyword: "游戏 传媒"
-    strategy_type: "satellite" # 新增：高弹性传媒
-
-  - code: "512980"
-    name: "传媒ETF"
-    sector_keyword: "传媒 短剧"
-    strategy_type: "satellite"
-
-# - code: "599050"
-#   name: "北证50ETF"
-#   sector_keyword: "北证 专精特新"
-#   strategy_type: "satellite"
-
-  - code: "512100"
-    name: "中证1000ETF"
-    sector_keyword: "小盘股"
+    sector_keyword: "煤炭 能源价格 寒潮"
     strategy_type: "satellite"
