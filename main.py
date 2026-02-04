@@ -91,7 +91,7 @@ def calculate_position_v11(tech_data, ai_adjustment, base_amount, max_daily, pos
 
 def render_html_report(market_ctx, funds_results, daily_total_cap, cio_review):
     """
-    V11.0 UI: 鎏金岁月 (Gilded Age) 主题
+    V11.1 UI: 鎏金岁月 (Gilded Age) 主题 - 修复标签清晰度
     """
     def render_dots(hist):
         h = ""
@@ -198,9 +198,15 @@ def render_html_report(market_ctx, funds_results, daily_total_cap, cio_review):
             margin-bottom: 25px; font-size: 14px; line-height: 1.6; color: #d7ccc8;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.8); position: relative;
         }}
+        /* [修复] 增强 CIO 标签的清晰度 */
         .cio-seal {{
-            position: absolute; top: 10px; right: 10px; border: 2px solid #D4AF37; color: #D4AF37;
-            padding: 2px 8px; font-size: 10px; transform: rotate(-15deg); font-weight: bold; opacity: 0.7;
+            position: absolute; top: 10px; right: 10px; 
+            border: 2px solid #D4AF37; color: #D4AF37;
+            padding: 5px 15px; font-size: 14px; /* 增大字号和内边距 */
+            transform: rotate(-15deg); font-weight: bold; 
+            opacity: 1.0; /* 提高不透明度 */
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8); /* 增加阴影增强对比 */
+            letter-spacing: 1px;
         }}
         .footer {{ text-align: center; font-size: 10px; color: #5d4037; margin-top: 40px; font-family: serif; }}
     </style>
@@ -208,12 +214,12 @@ def render_html_report(market_ctx, funds_results, daily_total_cap, cio_review):
     <body>
         <div class="header">
             <h1 class="title">GILDED QUANT</h1>
-            <div class="subtitle">V11.0 NEURO-FUSION ENGINE</div>
+            <div class="subtitle">V11.1 NEURO-FUSION ENGINE</div>
             <div class="macro-tag">宏观情绪: {market_ctx.get('north_label')}</div>
         </div>
         
         <div class="cio-paper">
-            <div class="cio-seal">CONFIDENTIAL</div>
+            <div class="cio-seal">CIO APPROVED</div>
             {cio_review}
         </div>
         
@@ -232,7 +238,7 @@ def main():
     scanner = MarketScanner()
     tracker = PortfolioTracker() 
     
-    logger.info(">>> [V11.0] 启动神经量化融合引擎 (Gilded Age)...")
+    logger.info(">>> [V11.1] 启动神经量化融合引擎 (UI Fixed)...")
     tracker.confirm_trades()
     
     try: analyst = NewsAnalyst()
@@ -258,11 +264,10 @@ def main():
             pos = tracker.get_position(fund['code'])
             
             # --- V11.0 核心改变：先问 AI，再做决策 ---
-            # 为了节省 Token，依然保留触发门槛，但门槛放低
             ai_adjustment = 0
             ai_res = {}
             
-            # 触发条件：有持仓 OR 评分极端 OR 评分不错(>60)想买入时需要审计
+            # 触发条件
             need_ai = (pos['shares'] > 0) or (tech['quant_score'] >= 60) or (tech['quant_score'] <= 35)
             
             if analyst and need_ai:
@@ -304,7 +309,7 @@ def main():
         # 按最终得分排序
         funds_results.sort(key=lambda x: -x['tech'].get('final_score', 0))
         html = render_html_report(market_ctx, funds_results, MAX_DAILY, cio_review)
-        send_email("🏆 鎏金量化 V11.0 战略内参", html)
+        send_email("🏆 鎏金量化 V11.1 战略内参", html)
 
 if __name__ == "__main__":
     main()
