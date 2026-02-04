@@ -14,10 +14,9 @@ def load_config():
         return yaml.safe_load(f)
 
 def calculate_position(tech_data, base_amount, max_daily, pos_info, strategy_type):
-    # --- 核心算法逻辑保持 V10 标准 ---
+    # --- 策略核心 ---
     score = tech_data['quant_score']
     weekly = tech_data['trend_weekly']
-    
     shares = pos_info['shares']
     held_days = pos_info.get('held_days', 999)
     
@@ -25,17 +24,11 @@ def calculate_position(tech_data, base_amount, max_daily, pos_info, strategy_typ
     multiplier = 0
     reasons = []
 
-    # 评分系统
-    if score >= 85: 
-        multiplier = 2.0; reasons.append("极高分")
-    elif score >= 70: 
-        multiplier = 1.0
-    elif score >= 60: 
-        multiplier = 0.5
-    elif score <= 15: 
-        multiplier = -1.0 
+    if score >= 85: multiplier = 2.0; reasons.append("极高分")
+    elif score >= 70: multiplier = 1.0
+    elif score >= 60: multiplier = 0.5
+    elif score <= 15: multiplier = -1.0 
     
-    # 策略微调
     if is_core:
         if multiplier < 0 and score > -40: multiplier = 0 
         if weekly == "UP" and multiplier == 0: multiplier = 0.5
@@ -51,7 +44,6 @@ def calculate_position(tech_data, base_amount, max_daily, pos_info, strategy_typ
     if multiplier < 0 and shares > 0 and held_days < 7: 
         multiplier = 0; reasons.append(f"锁仓({held_days}天)")
 
-    # 熊市防御
     if weekly == "DOWN":
         if multiplier > 0: multiplier *= 0.5 
         if is_core and multiplier < 0 and score > -60: multiplier = 0 
@@ -70,7 +62,7 @@ def calculate_position(tech_data, base_amount, max_daily, pos_info, strategy_typ
         sell_value = shares * tech_data['price'] * sell_ratio
         label = "卖出"
 
-    # [修复] 必须确保 quant_reasons 存在
+    # [防御性修复] 确保 quant_reasons 存在
     if reasons:
         if 'quant_reasons' not in tech_data: tech_data['quant_reasons'] = []
         tech_data['quant_reasons'].extend(reasons)
@@ -91,15 +83,18 @@ def render_html_report(market_ctx, funds_results, daily_total_cap, cio_review):
         color = "#ff4d4f" if r['amount'] > 0 else ("#52c41a" if r.get('is_sell') else "#444")
         act = f"+{r['amount']:,}" if r['amount']>0 else (f"-{int(r.get('sell_value',0)):,}" if r.get('is_sell') else "HOLD")
         
-        # 安全获取字段
-        reasons = " ".join([f"[{x}]" for x in r['tech'].get('quant_reasons', [])])
+        # [核心修复] 使用 .get() 确保即使字段缺失也不会报错
+        reasons_list = r['tech'].get('quant_reasons', [])
+        reasons = " ".join([f"[{x}]" for x in reasons_list])
         
         ai_txt = ""
-        if r.get('ai_analysis') and r['ai_analysis'].get('comment'):
+        # 同样使用 .get() 保护
+        ai_data = r.get('ai_analysis', {})
+        if ai_data.get('comment'):
             ai_txt = f"""
             <div style='font-size:12px;color:#aaa;margin-top:8px;border-top:1px dashed #333;padding-top:5px;line-height:1.4;'>
-                <span style='color:#D4AF37'>🤖 洞察:</span> {r['ai_analysis'].get('comment')}
-                <div style='margin-top:2px;'><span style='color:#ff4d4f'>⚠️ 风险:</span> {r['ai_analysis'].get('risk_alert')}</div>
+                <span style='color:#D4AF37'>🤖 洞察:</span> {ai_data.get('comment')}
+                <div style='margin-top:2px;'><span style='color:#ff4d4f'>⚠️ 风险:</span> {ai_data.get('risk_alert')}</div>
             </div>
             """
 
@@ -167,7 +162,7 @@ def main():
     market_ctx = scanner.get_market_sentiment()
     funds_results = []
     
-    # 收集详细信息给 CIO
+    # CIO 汇报清单
     cio_summary_lines = [f"市场环境: {market_ctx}"]
     
     BASE_AMT = config['global']['base_invest_amount']
@@ -187,8 +182,8 @@ def main():
             
             tracker.record_signal(fund['code'], lbl)
             
-            # [深度分析] 只要有持仓或有操作，或评分有异动，就强制 AI 介入
-            # V10.9 降低 AI 触发门槛，确保重要标的都有点评
+            # [深度分析触发条件]
+            # 只要有持仓、有操作、或评分有异动，就触发 AI
             ai_res = {}
             need_ai = (amt > 0) or is_sell or (tech['quant_score'] >= 65) or (tech['quant_score'] <= 35) or (pos['shares'] > 0)
             
@@ -199,7 +194,7 @@ def main():
             if amt > 0: tracker.add_trade(fund['code'], fund['name'], amt, tech['price'])
             elif is_sell: tracker.add_trade(fund['code'], fund['name'], s_val, tech['price'], True)
 
-            # 构建详细的 CIO 汇报行
+            # CIO 汇报行
             act_str = f"买入{amt}" if amt>0 else ("卖出" if is_sell else "持有/观望")
             cio_summary_lines.append(f"- {fund['name']}: {act_str} (分:{tech['quant_score']}, RSI:{tech['rsi']}, OBV:{tech['flow']['obv_slope']})")
 
@@ -209,7 +204,7 @@ def main():
                 "history": tracker.get_signal_history(fund['code'])
             })
             
-            # Yahoo 速度很快，不需要长 sleep，0.2秒缓冲足矣
+            # Yahoo 极速模式：仅保留 0.2秒缓冲
             time.sleep(0.2) 
 
         except Exception as e:
@@ -218,7 +213,6 @@ def main():
     cio_review = ""
     if analyst and funds_results:
         logger.info(">>> CIO Deep Audit...")
-        # 发送完整的汇报清单
         cio_review = analyst.review_report("\n".join(cio_summary_lines))
 
     if funds_results:
