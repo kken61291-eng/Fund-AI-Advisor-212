@@ -77,7 +77,7 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
     if reasons: tech['quant_reasons'] = reasons
     return final_amt, label, is_sell, sell_val
 
-# [UI 渲染 V14.17: 玄铁黑金皮肤]
+# [UI 渲染]
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
     news_html = ""
     seen_titles = set()
@@ -216,10 +216,10 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }}
         
-        /* 玄铁先生 黑金流光风格 (High Contrast) */
+        /* 玄铁先生 黑金流光风格 */
         .advisor-section {{ 
             background: linear-gradient(145deg, #1a1a1a, #262626); 
-            border: 1px solid #d4af37; /* 土豪金边框 */
+            border: 1px solid #d4af37; /* 土豪金 */
             border-left: 4px solid #ffd700; 
             padding: 20px; 
             margin-bottom: 30px; 
@@ -234,7 +234,7 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
         <div class="main-container">
             <div class="header">
                 <h1 class="title">XUANTIE QUANT</h1>
-                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.17 BLACK GOLD</div>
+                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.18 STABLE</div>
             </div>
             
             <div class="radar-panel">
@@ -253,7 +253,7 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             </div>
 
             {rows}
-            <div class="footer">EST. 2026 | POWERED BY EM EASTMONEY LIVE</div>
+            <div class="footer">EST. 2026 | POWERED BY EM NEWS</div>
         </div>
     </body></html>"""
 
@@ -329,7 +329,7 @@ def main():
     tracker = PortfolioTracker()
     val_engine = ValuationEngine()
     
-    logger.info(">>> [V14.17] 启动玄铁量化 (Black Gold UI + Live Wire)...")
+    logger.info(">>> [V14.18] 启动玄铁量化 (Single Thread Stable)...")
     tracker.confirm_trades()
     try: analyst = NewsAnalyst()
     except: analyst = None
@@ -343,7 +343,8 @@ def main():
 
     results = []; cio_lines = [f"【宏观环境】: {macro_str}\n"]
     
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    # [核心修复] max_workers=1 单线程执行，避免被封 IP
+    with ThreadPoolExecutor(max_workers=1) as executor:
         future_to_fund = {executor.submit(
             process_single_fund, 
             fund, config, fetcher, scanner, tracker, val_engine, analyst, macro_str, 
@@ -367,6 +368,6 @@ def main():
         advisor_html = analyst.advisor_review(full_report, macro_str) if analyst else "<p>玄铁先生闭关中</p>"
         
         html = render_html_report_v13(all_news_seen, results, cio_html, advisor_html) 
-        send_email("🗡️ 玄铁量化 V14.17 最终决议", html)
+        send_email("🗡️ 玄铁量化 V14.18 最终决议", html)
 
 if __name__ == "__main__": main()
