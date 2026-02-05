@@ -19,11 +19,9 @@ class NewsAnalyst:
 
     def _format_short_time(self, time_str):
         try:
-            # 尝试解析
             dt = datetime.strptime(str(time_str), "%Y-%m-%d %H:%M:%S")
             return dt.strftime("%m-%d %H:%M")
         except:
-            # 兜底截取
             s = str(time_str)
             if len(s) > 10: return s[5:16]
             return s
@@ -35,7 +33,7 @@ class NewsAnalyst:
         try:
             df = ak.stock_news_em(symbol="要闻")
             keys = keyword.split()
-            junk_words = ["汇总", "集锦", "收评", "早报"]
+            junk_words = ["汇总", "集锦", "收评", "早报", "公告"]
             
             for _, row in df.iterrows():
                 title = str(row.get('title', ''))
@@ -44,13 +42,12 @@ class NewsAnalyst:
                 if any(jw in title for jw in junk_words): continue
                 
                 if any(k in title for k in keys):
-                    # [修复] 统一时间格式
                     time_str = self._format_short_time(raw_time)
                     news_list.append(f"[{time_str}] {title}")
             
             if not news_list:
-                return [f"近期无'{keyword}'资讯，参考宏观。"]
-            return news_list[:5] 
+                return [f"近期无'{keyword}'直接资讯，参考宏观。"]
+            return news_list[:8] # [扩容] 从5条增加到8条
         except Exception as e:
             logger.warning(f"行业新闻抓取失败 {keyword}: {e}")
             return ["数据源暂时不可用"]
@@ -79,12 +76,13 @@ class NewsAnalyst:
         elif vol_ratio > 2.0: volume_status = "放量分歧"
         else: volume_status = "温和"
 
+        # [扩容] macro_summary[:800] 确保读取所有宏观新闻
         prompt = f"""
         你现在是【玄铁基金投委会】的会议记录员。对标的【{fund_name}】进行投资辩论。
 
         【硬数据】[评分:{score}] [估值:{valuation}] [资金:{money_flow}] [量能:{volume_status}] [趋势:{trend}]
-        【宏观】{macro_summary[:200]}
-        【行业新闻】{str(sector_news)[:500]}
+        【宏观环境】{macro_summary[:800]} 
+        【行业情报】{str(sector_news)[:800]}
 
         请模拟以下三位委员的专业发言 (华尔街风格，拒绝废话)：
 
@@ -105,7 +103,7 @@ class NewsAnalyst:
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.4, 
+            "temperature": 0.3, # [微调] 降低温度，提高稳定性
             "max_tokens": 1000
         }
         
@@ -128,7 +126,7 @@ class NewsAnalyst:
     def _fallback_result(self, news):
         return {"bull_say": "数据缺失", "bear_say": "风险未知", "comment": "连接中断", "adjustment": 0, "risk_alert": "API Error", "used_news": news}
 
-    # --- CIO 战略审计 ---
+    # --- 2. CIO 战略审计 ---
     @retry(retries=2, delay=2)
     def review_report(self, report_text):
         prompt = f"""
@@ -156,7 +154,7 @@ class NewsAnalyst:
         """
         return self._call_llm_text(prompt, "CIO 战略审计")
 
-    # --- 玄铁先生复盘 ---
+    # --- 3. 玄铁先生复盘 ---
     @retry(retries=2, delay=2)
     def advisor_review(self, report_text, macro_str):
         prompt = f"""
@@ -165,7 +163,7 @@ class NewsAnalyst:
         你摒弃了所有花哨的预测，只相信 **"价格包容一切"** 和 **"群体心理博弈"**。
         你的语言风格：**深刻、冷静、直击本质**。不要使用"江湖"、"武侠"、"剑气"等词汇。用金融哲学和数学逻辑说话。
 
-        【宏观】{macro_str}
+        【宏观】{macro_str[:1500]} 
         【决议】{report_text}
 
         请撰写【场外实战复盘】 (HTML格式)：
@@ -190,6 +188,7 @@ class NewsAnalyst:
             <h4 style="color: #ffb74d;">【断·进攻】</h4><p>...</p>
         </div>
         """
+        # [扩容] 玄铁先生需要看更多宏观数据，限制放宽到 1500
         return self._call_llm_text(prompt, "玄铁先生复盘")
 
     def _call_llm_text(self, prompt, task_name):
