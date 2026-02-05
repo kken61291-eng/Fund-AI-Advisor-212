@@ -18,20 +18,49 @@ class PortfolioTracker:
             try:
                 with open(self.filepath, 'r', encoding='utf-8') as f:
                     self.portfolio = json.load(f)
-            except Exception:
+                
+                # [V14.12 修复] 数据自愈：自动补全旧版数据的缺失字段
+                # 如果旧数据没有 shares 字段，这里会补上 0，防止后续 KeyError
+                dirty = False
+                for code, pos in self.portfolio.items():
+                    if 'shares' not in pos: 
+                        pos['shares'] = 0
+                        dirty = True
+                    if 'cost' not in pos: 
+                        pos['cost'] = 0.0
+                        dirty = True
+                    if 'held_days' not in pos: 
+                        pos['held_days'] = 0
+                        dirty = True
+                    if 'history' not in pos: 
+                        pos['history'] = []
+                        dirty = True
+                
+                if dirty:
+                    self._save_portfolio()
+                    logger.info("🔧 检测到旧版账本数据，已自动补全缺失字段。")
+
+            except Exception as e:
+                logger.error(f"账本加载失败: {e}, 重置为空账本")
                 self.portfolio = {}
 
     def _save_portfolio(self):
-        with open(self.filepath, 'w', encoding='utf-8') as f:
-            json.dump(self.portfolio, f, indent=2, ensure_ascii=False)
+        try:
+            with open(self.filepath, 'w', encoding='utf-8') as f:
+                json.dump(self.portfolio, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"账本保存失败: {e}")
 
     def get_position(self, code):
         if code not in self.portfolio:
             return {'shares': 0, 'cost': 0.0, 'held_days': 0}
         pos = self.portfolio[code]
-        if 'cost' not in pos: pos['cost'] = 0.0
-        if 'shares' not in pos: pos['shares'] = 0
-        return pos
+        # 双重保险，返回时确保字段存在
+        return {
+            'shares': pos.get('shares', 0),
+            'cost': pos.get('cost', 0.0),
+            'held_days': pos.get('held_days', 0)
+        }
 
     def add_trade(self, code, name, amount_or_value, price, is_sell=False):
         if price <= 0: return
@@ -46,6 +75,12 @@ class PortfolioTracker:
             }
         
         pos = self.portfolio[code]
+        # 运行时防御：确保字段存在
+        if 'shares' not in pos: pos['shares'] = 0
+        if 'cost' not in pos: pos['cost'] = 0.0
+        if 'held_days' not in pos: pos['held_days'] = 0
+        if 'history' not in pos: pos['history'] = []
+
         shares_change = amount_or_value / price
         
         record = {
@@ -92,8 +127,8 @@ class PortfolioTracker:
         return []
         
     def confirm_trades(self):
-        today = datetime.now().strftime("%Y-%m-%d")
+        # [V14.12 修复] 使用 .get() 安全访问，防止 KeyError
         for code, pos in self.portfolio.items():
-            if pos['shares'] > 0:
+            if pos.get('shares', 0) > 0:
                 pos['held_days'] = pos.get('held_days', 0) + 1
         self._save_portfolio()
