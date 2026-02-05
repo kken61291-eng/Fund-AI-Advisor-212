@@ -195,7 +195,7 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
         except Exception as e:
             logger.error(f"渲染错误 {r.get('name')}: {e}")
 
-    # [修复] 强制白色字体，适应深色背景
+    # [UI 核心] V14.21 样式：纯净黑底，白字
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
         body {{ background: #0a0a0a; color: #f0e6d2; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-width: 660px; margin: 0 auto; padding: 20px; }}
         .main-container {{ border: 2px solid #333; border-top: 5px solid #ffb74d; border-radius: 4px; padding: 20px; background: linear-gradient(180deg, #1b1b1b 0%, #000000 100%); }}
@@ -206,6 +206,7 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
         .radar-panel {{ background: #111; border: 1px solid #333; border-radius: 4px; padding: 15px; margin-bottom: 25px; }}
         .radar-title {{ font-size: 14px; color: #ffb74d; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #444; padding-bottom: 6px; letter-spacing: 1px; }}
 
+        /* CIO 风格 */
         .cio-section {{ 
             background: linear-gradient(145deg, #1a0505, #2b0b0b); 
             border: 1px solid #5c1818; 
@@ -215,11 +216,11 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             border-radius: 2px; 
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }}
-        
         /* 强制CIO部分字体为纯白 */
         .cio-section p, .cio-section div, .cio-section h3 {{ color: #ffffff !important; line-height: 1.6; }}
-        .cio-section h3 {{ border-bottom: 1px dashed #5c1818; padding-bottom: 5px; margin-top: 15px; margin-bottom: 8px; }}
+        .cio-section h3 {{ color: #ffffff !important; border-bottom: 1px dashed #5c1818; padding-bottom: 5px; margin-top: 15px; margin-bottom: 8px; }}
 
+        /* 玄铁先生 风格 */
         .advisor-section {{ 
             background: #0f0f0f; 
             border: 1px solid #d4af37; 
@@ -231,8 +232,8 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             position: relative;
         }}
         
-        /* 强制玄铁先生部分字体为纯白 */
-        .advisor-section p, .advisor-section div, .advisor-section h4 {{ color: #ffffff !important; line-height: 1.6; font-family: 'Georgia', serif; }}
+        /* 强制玄铁先生部分字体为纯白，保留 Georgia 字体 */
+        .advisor-section * {{ color: #ffffff !important; line-height: 1.6; font-family: 'Georgia', serif; }}
         .advisor-section h4 {{ color: #ffd700 !important; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px dashed #333; padding-bottom: 4px; }}
 
         .section-title {{ font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #eee; text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }}
@@ -287,10 +288,10 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
         with tracker_lock: pos = tracker.get_position(fund['code'])
 
         ai_adj = 0; ai_res = {}
-        # [核心改动] 恢复使用关键词检索
         keyword = fund.get('sector_keyword', fund['name']) 
         
         if analyst and (pos['shares']>0 or tech['quant_score']>=60 or tech['quant_score']<=35):
+            # [V14.21 核心] 使用关键词搜索
             sector_news_list = analyst.fetch_news_titles(keyword)
             ai_res = analyst.analyze_fund_v4(fund['name'], tech, macro_str, sector_news_list)
             ai_adj = ai_res.get('adjustment', 0)
@@ -351,7 +352,6 @@ def main():
 
     results = []; cio_lines = [f"【宏观环境】: {macro_str}\n"]
     
-    # 单线程稳健运行
     with ThreadPoolExecutor(max_workers=1) as executor:
         future_to_fund = {executor.submit(
             process_single_fund, 
