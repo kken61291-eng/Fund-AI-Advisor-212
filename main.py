@@ -15,7 +15,6 @@ from utils import send_email, logger
 tracker_lock = threading.Lock()
 
 def load_config():
-    # 增加容错，防止文件编码问题
     try:
         with open('config.yaml', 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
@@ -200,7 +199,7 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
         <div class="main-container">
             <div class="header">
                 <h1 class="title">XUANTIE QUANT</h1>
-                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.9 ULTIMATE</div>
+                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.11 FEDERAL SYSTEM</div>
                 <div class="macro-panel"><div style="font-size:11px;color:#ffb74d;margin-bottom:10px;text-transform:uppercase;border-bottom:1px solid #333;padding-bottom:4px;">Global Macro Radar</div>{macro_html}</div>
             </div>
             <div class="cio-paper">
@@ -280,7 +279,7 @@ def main():
     tracker = PortfolioTracker()
     val_engine = ValuationEngine()
     
-    logger.info(">>> [V14.9] 启动玄铁量化 (Ultimate Defensive Version)...")
+    logger.info(">>> [V14.11] 启动玄铁量化 (Ultimate Federal System)...")
     tracker.confirm_trades()
     try: analyst = NewsAnalyst()
     except: analyst = None
@@ -290,12 +289,11 @@ def main():
     results = []; cio_lines = [f"【宏观环境】: {macro_str}\n"]
     
     with ThreadPoolExecutor(max_workers=3) as executor:
-        # [防御修复] 增加 .get() 默认值
         future_to_fund = {executor.submit(
             process_single_fund, 
             fund, config, fetcher, scanner, tracker, val_engine, analyst, macro_str, 
             config['global']['base_invest_amount'], config['global']['max_daily_invest']
-        ): fund for fund in config.get('funds', [])} # 增加 .get('funds', []) 防御
+        ): fund for fund in config.get('funds', [])}
         
         for future in as_completed(future_to_fund):
             try:
@@ -309,6 +307,6 @@ def main():
         cio_html = analyst.review_report(full_report) if analyst else "<p>CIO 缺席</p>"
         advisor_html = analyst.advisor_review(full_report, macro_str) if analyst else "<p>玄铁先生闭关中</p>"
         html = render_html_report_v13(macro_news, results, cio_html, advisor_html) 
-        send_email("🗡️ 玄铁量化 V14.9 最终决议", html)
+        send_email("🗡️ 玄铁量化 V14.11 最终决议", html)
 
 if __name__ == "__main__": main()
