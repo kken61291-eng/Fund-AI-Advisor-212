@@ -20,29 +20,34 @@ class NewsAnalyst:
     @retry(retries=2, delay=2)
     def fetch_news_titles(self, keyword):
         """
-        [修复] 恢复行业新闻抓取能力 (新版接口)
+        [修复] 恢复行业新闻抓取能力 (改用东财源)
         """
         if not keyword: return []
         
         news_list = []
         try:
-            # [修复] 接口变更为 stock_telegraph_cls
-            df = ak.stock_telegraph_cls()
+            # 尝试1: 东方财富个股/板块新闻
+            # 搜索策略：直接搜关键词可能没有API，我们使用"要闻"接口然后本地过滤
+            df = ak.stock_news_em(symbol="要闻")
             
             keys = keyword.split()
             
             for _, row in df.iterrows():
                 title = str(row.get('title', ''))
-                content = str(row.get('content', ''))
-                full_text = title + content
-                
-                if any(k in full_text for k in keys):
-                    clean_title = re.sub(r'<[^>]+>', '', title).strip()
-                    if not clean_title: clean_title = content[:50]
-                    news_list.append(f"[{row.get('ctime','')[-8:]}] {clean_title}")
+                # 东财只有title, content, public_time
+                if any(k in title for k in keys):
+                    news_list.append(f"[{row.get('public_time','')[-5:]}] {title}")
             
+            # 如果没抓到，尝试备用源：全球快讯
             if not news_list:
-                return [f"近期无'{keyword}'直接相关重磅快讯，需参考宏观大势。"]
+                df_global = ak.stock_info_global_ems()
+                for _, row in df_global.iterrows():
+                    content = str(row.get('content', ''))
+                    if any(k in content for k in keys):
+                        news_list.append(f"[快讯] {content[:60]}...")
+
+            if not news_list:
+                return [f"近期无'{keyword}'直接相关资讯，建议关注盘面资金流向。"]
                 
             return news_list[:5] 
             
@@ -61,8 +66,8 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # ... (保持投委会 Prompt 逻辑不变) ...
-        # 为节省篇幅，此处省略 Prompt 构建代码，请确保您使用 V14.1/V14.2 包含"投委会最高宪章"的完整版本
+        # ... (投委会 Prompt 逻辑保持不变，为节省篇幅省略，请复用 V14.1 的逻辑) ...
+        # 请务必保留之前带有 "投委会最高宪章" 的 Prompt 代码
         
         score = tech_indicators.get('quant_score', 50)
         trend = tech_indicators.get('trend_weekly', '无趋势')
