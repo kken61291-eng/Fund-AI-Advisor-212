@@ -50,7 +50,7 @@
   },
   "positions": {
     "515080": {
-      "shares": 626.5664160401002,
+      "shares": 783.2080200501252,
       "avg_cost": 1.596,
       "first_buy_date": "2026-02-05"
     },
@@ -75,8 +75,13 @@
       "first_buy_date": null
     },
     "515220": {
-      "shares": 888.8888888888889,
-      "avg_cost": 1.125,
+      "shares": 1317.7053554412046,
+      "avg_cost": 1.1383424934914665,
+      "first_buy_date": "2026-02-05"
+    },
+    "518880": {
+      "shares": 46.010858562620776,
+      "avg_cost": 10.867,
       "first_buy_date": "2026-02-05"
     }
   },
@@ -137,6 +142,30 @@
       "side": "BUY",
       "amount": 1000,
       "price": 1.125
+    },
+    {
+      "date": "2026-02-05 11:57",
+      "code": "515080",
+      "name": "红利ETF",
+      "side": "BUY",
+      "amount": 250,
+      "price": 1.596
+    },
+    {
+      "date": "2026-02-05 11:58",
+      "code": "515220",
+      "name": "煤炭ETF",
+      "side": "BUY",
+      "amount": 500,
+      "price": 1.166
+    },
+    {
+      "date": "2026-02-05 11:59",
+      "code": "518880",
+      "name": "黄金ETF",
+      "side": "BUY",
+      "amount": 500,
+      "price": 10.867
     }
   ],
   "signal_record": {
