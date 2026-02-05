@@ -46,9 +46,6 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # 保持 V14.7 投委会逻辑
-        # ... (省略重复代码，请确保使用 V14.7 版本的 analyze_fund_v4) ...
-        # 请务必保留之前带有 CGO/CRO 人设的 Prompt
         score = tech_indicators.get('quant_score', 50)
         trend = tech_indicators.get('trend_weekly', '无趋势')
         valuation = tech_indicators.get('valuation_desc', '未知')
@@ -180,7 +177,6 @@ class NewsAnalyst:
             response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
             if response.status_code == 200:
                 raw_text = response.json()['choices'][0]['message']['content']
-                # [修复] 强制清洗 Markdown 标记，防止邮件乱码
                 clean_text = raw_text.replace("```html", "").replace("```", "").strip()
                 return clean_text
             return f"{task_name} 生成失败: API Error"
