@@ -50,9 +50,9 @@
   },
   "positions": {
     "515080": {
-      "shares": 0,
-      "avg_cost": 0,
-      "first_buy_date": null
+      "shares": 626.5664160401002,
+      "avg_cost": 1.596,
+      "first_buy_date": "2026-02-05"
     },
     "510300": {
       "shares": 0,
@@ -73,6 +73,11 @@
       "shares": 0,
       "avg_cost": 0,
       "first_buy_date": null
+    },
+    "515220": {
+      "shares": 888.8888888888889,
+      "avg_cost": 1.125,
+      "first_buy_date": "2026-02-05"
     }
   },
   "cash": 0,
@@ -116,6 +121,22 @@
       "side": "SELL",
       "amount": 0.0,
       "price": 1.578
+    },
+    {
+      "date": "2026-02-05 11:51",
+      "code": "515080",
+      "name": "红利ETF",
+      "side": "BUY",
+      "amount": 1000,
+      "price": 1.596
+    },
+    {
+      "date": "2026-02-05 11:51",
+      "code": "515220",
+      "name": "煤炭ETF",
+      "side": "BUY",
+      "amount": 1000,
+      "price": 1.125
     }
   ],
   "signal_record": {
