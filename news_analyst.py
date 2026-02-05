@@ -11,7 +11,7 @@ class NewsAnalyst:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.base_url = os.getenv("LLM_BASE_URL")
-        self.model = os.getenv("LLM_MODEL", "gpt-3.5-turbo") # 建议使用 GPT-4 或 Claude-3.5 以获得最佳人设体验
+        self.model = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -19,7 +19,6 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def fetch_news_titles(self, keyword):
-        """行业新闻抓取"""
         if not keyword: return []
         news_list = []
         try:
@@ -45,13 +44,11 @@ class NewsAnalyst:
             return text
         except: return text
 
-    # =========================================================================
-    # 角色 1: 投委会 (The Investment Committee)
-    # 职责: 微观博弈，针对具体标的的短线厮杀
-    # =========================================================================
     @retry(retries=2, delay=2)
     def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # 1. 提取硬数据
+        # 保持 V14.7 投委会逻辑
+        # ... (省略重复代码，请确保使用 V14.7 版本的 analyze_fund_v4) ...
+        # 请务必保留之前带有 CGO/CRO 人设的 Prompt
         score = tech_indicators.get('quant_score', 50)
         trend = tech_indicators.get('trend_weekly', '无趋势')
         valuation = tech_indicators.get('valuation_desc', '未知')
@@ -65,7 +62,6 @@ class NewsAnalyst:
         elif vol_ratio > 2.0: volume_status = "放量分歧"
         else: volume_status = "量能健康"
 
-        # 2. 深度人设 Prompt
         prompt = f"""
         你现在是【玄铁基金投委会】的会议记录员。我们要对标的【{fund_name}】进行一场专业的投资辩论。
 
@@ -109,7 +105,7 @@ class NewsAnalyst:
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.4, # 保持一定的专业严谨度
+            "temperature": 0.4, 
             "max_tokens": 1000
         }
         
@@ -131,40 +127,20 @@ class NewsAnalyst:
     def _fallback_result(self):
         return {"bull_say": "数据缺失", "bear_say": "风险未知", "comment": "连接中断，维持原判", "adjustment": 0, "risk_alert": "API Error"}
 
-    # =========================================================================
-    # 角色 2: CIO (Chief Investment Officer)
-    # 职责: 战略审计，管理总风险敞口，防止局部最优导致全局崩盘
-    # =========================================================================
+    # --- 2. CIO 战略审计 ---
     @retry(retries=2, delay=2)
     def review_report(self, report_text):
-        """
-        CIO 视角：战略审计与压力测试
-        """
         prompt = f"""
-        你是【玄铁量化】的 **CIO (首席投资官)**。你是一位久经沙场的机构操盘手，**以严厉、风控至上、大局观著称**。
-        你现在面对的是各板块投委会提交上来的“散乱决策”，你需要将它们整合成一个有逻辑的投资组合。
+        你是【玄铁量化】的 **CIO (首席投资官)**。你以**严厉、风控至上**著称。
+        请对以下投委会决策汇总进行【战略审计】，输出 HTML 简报 (不要 Markdown)：
 
-        【投委会决策汇总】
-        {report_text}
+        【汇总】{report_text}
 
-        请进行 **【战略审计 (Strategic Audit)】**，输出一份 HTML 简报 (不要 Markdown)：
+        内容要求：
+        1. **宏观定调**: 明确当前是主动去库/补库？核心矛盾是什么？
+        2. **双轨审计**: 批评或表扬底仓(红利/300)和卫星仓(科技)的决策。
+        3. **最终指令**: 给出总仓位建议(0-100%)。
 
-        1.  **宏观定调 (The Macro Regime)**:
-            - 不要复述新闻。请告诉我，现在的市场属于什么阶段？
-            - 选项：*主动去库期(暴跌)*、*被动去库期(阴跌)*、*主动补库期(普涨)*、*被动补库期(滞涨)*。
-            - 明确当前的核心矛盾（如：强预期 vs 弱现实）。
-
-        2.  **双轨压力测试 (Stress Test)**:
-            - **底仓审计** (红利/300)：投委会是否在下跌趋势中盲目抄底？如果是，请严厉批评并建议停止加仓。
-            - **卫星审计** (科技/传媒)：投委会是否在缩量反弹中盲目追高？如果是，请提示“减仓兑现”。
-
-        3.  **最终指令 (Final Mandate)**:
-            - **点名表扬**：哪个板块的决策最符合当前宏观逻辑？
-            - **点名批评**：哪个板块的决策在裸露风险敞口？
-            - **总仓位控制**：基于当前风险，给出一个 0-100% 的建议仓位。
-
-        **风格要求**：专业、冷峻、不带感情色彩。你不是来交朋友的，你是来管理风险的。
-        
         输出模板：
         <p><b>宏观定调：</b>...</p>
         <p><b>双轨审计：</b>...</p>
@@ -172,43 +148,19 @@ class NewsAnalyst:
         """
         return self._call_llm_text(prompt, "CIO 战略审计")
 
-    # =========================================================================
-    # 角色 3: 玄铁先生 (The Sage / The Master)
-    # 职责: 哲学复盘，透过量价看人性，传授"重剑无锋"的道
-    # =========================================================================
+    # --- 3. 玄铁先生复盘 ---
     @retry(retries=2, delay=2)
     def advisor_review(self, report_text, macro_str):
-        """
-        玄铁先生视角：量价心理学与投资之道
-        """
         prompt = f"""
-        你是 **【玄铁先生】**。你不是分析师，你是一位隐居的 **量化宗师**。
-        你的投资哲学是 **"重剑无锋，大巧不工"** —— 摒弃花哨的预测，只跟随笨拙的趋势。
-        你擅长通过 **成交量 (Volume)** 和 **价格形态 (Pattern)** 来洞察市场背后的 **群体心理 (Crowd Psychology)**。
+        你是 **【玄铁先生】**，一位量化宗师，信奉 **"重剑无锋"**。
+        请写一段带有**武侠哲理**的【场外实战复盘】 (HTML格式)：
 
-        【宏观面】{macro_str}
-        【决议表】{report_text}
+        【宏观】{macro_str}
+        【决议】{report_text}
 
-        请写一段 **【场外实战复盘】**，严格遵循以下三段式 (HTML格式)：
-
-        **1. 【势·验证】 (The Trend & Psychology)**
-           - 此时此刻，市场的主流情绪是什么？（恐慌？贪婪？麻木？）
-           - 结合宏观，指出主力资金是在“诱多出货”还是在“借利空吸筹”？
-           - *金句要求*：用一句富有哲理的话总结当下的势。
-
-        **2. 【术·底仓】 (The Shield)**
-           - 点评防御性资产（红利/300）。
-           - 强调：底仓不是为了赚钱，是为了**活下来**。如果底仓都在亏，说明系统性风险已至，必须空仓。
-
-        **3. 【断·进攻】 (The Sword)**
-           - 点评进攻性资产（科技/成长）。
-           - 强调：**"不见兔子不撒鹰"**。如果没有放量突破，一切反弹都是耍流氓。
-           - 告诫：如果技术指标（如RSI）过热，必须收剑入鞘。
-
-        **风格要求**：
-        - 语言要有“江湖气”但又不失专业。
-        - 多用比喻（如：镰刀、韭菜、迷雾、深渊）。
-        - 站在上帝视角，俯视市场的芸芸众生。
+        1. **【势·验证】**: 分析主力意图(诱多/吸筹)。
+        2. **【术·底仓】**: 点评防御资产。
+        3. **【断·进攻】**: 点评进攻资产。
 
         输出模板：
         <h4>【势·验证】</h4><p>...</p>
@@ -221,13 +173,16 @@ class NewsAnalyst:
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5, # 适度创造性
+            "temperature": 0.5,
             "max_tokens": 1500
         }
         try:
             response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
             if response.status_code == 200:
-                return response.json()['choices'][0]['message']['content']
+                raw_text = response.json()['choices'][0]['message']['content']
+                # [修复] 强制清洗 Markdown 标记，防止邮件乱码
+                clean_text = raw_text.replace("```html", "").replace("```", "").strip()
+                return clean_text
             return f"{task_name} 生成失败: API Error"
         except Exception as e:
             logger.error(f"{task_name} 失败: {e}")
