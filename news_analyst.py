@@ -20,17 +20,15 @@ class NewsAnalyst:
     @retry(retries=2, delay=2)
     def fetch_news_titles(self, keyword):
         """
-        [V14.2 修复] 恢复行业新闻抓取能力
+        [修复] 恢复行业新闻抓取能力 (新版接口)
         """
         if not keyword: return []
         
         news_list = []
         try:
-            # 同样使用财联社电报，但在本地进行关键词过滤
-            # 这是一个轻量级的做法，避免引入复杂的搜索引擎
-            df = ak.cls_telegraph_news()
+            # [修复] 接口变更为 stock_telegraph_cls
+            df = ak.stock_telegraph_cls()
             
-            # 关键词拆分 (例如 "传媒 游戏" -> ["传媒", "游戏"])
             keys = keyword.split()
             
             for _, row in df.iterrows():
@@ -38,17 +36,15 @@ class NewsAnalyst:
                 content = str(row.get('content', ''))
                 full_text = title + content
                 
-                # 只要命中任意一个关键词
                 if any(k in full_text for k in keys):
                     clean_title = re.sub(r'<[^>]+>', '', title).strip()
                     if not clean_title: clean_title = content[:50]
                     news_list.append(f"[{row.get('ctime','')[-8:]}] {clean_title}")
             
-            # 如果没抓到，给一个默认提示，防止AI瞎编
             if not news_list:
                 return [f"近期无'{keyword}'直接相关重磅快讯，需参考宏观大势。"]
                 
-            return news_list[:5] # 只取最新的5条
+            return news_list[:5] 
             
         except Exception as e:
             logger.warning(f"行业新闻抓取失败 {keyword}: {e}")
@@ -65,9 +61,8 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # ... (此处保持 V14.1 的投委会 Prompt 逻辑完全不变) ...
-        # 为节省篇幅，这里复用 V14.1 的 analyze_fund_v4 代码
-        # 请确保您保留了刚才 V14.1 中那个带有 "投委会最高宪章" 的 Prompt
+        # ... (保持投委会 Prompt 逻辑不变) ...
+        # 为节省篇幅，此处省略 Prompt 构建代码，请确保您使用 V14.1/V14.2 包含"投委会最高宪章"的完整版本
         
         score = tech_indicators.get('quant_score', 50)
         trend = tech_indicators.get('trend_weekly', '无趋势')
