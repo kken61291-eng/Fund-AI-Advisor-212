@@ -77,11 +77,9 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
     if reasons: tech['quant_reasons'] = reasons
     return final_amt, label, is_sell, sell_val
 
-# [UI 渲染 V14.13: 增加新闻雷达，回归 V12 样式]
+# [UI 渲染]
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
-    # 1. 渲染新闻雷达 (展示 AI 看到的所有信息)
     news_html = ""
-    # 去重并取前15条
     seen_titles = set()
     unique_news = []
     for n in all_news:
@@ -89,8 +87,8 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             unique_news.append(n)
             seen_titles.add(n['title'])
     
-    # 排序：带【重磅】的优先，然后按时间
-    unique_news.sort(key=lambda x: (not ('重磅' in x['title'] or '突发' in x['title']), x.get('time', '')))
+    # 排序：重磅优先，然后按时间倒序 (字符串时间排序 MM-DD HH:MM 是正确的)
+    unique_news.sort(key=lambda x: (not ('重磅' in x['title'] or '突发' in x['title']), x.get('time', '')), reverse=True)
 
     for i, news in enumerate(unique_news[:15]):
         color = "#ffb74d" if ('重磅' in news['title'] or '突发' in news['title']) else "#bdbdbd"
@@ -183,184 +181,3 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
                 <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:5px;font-size:11px;color:#bdbdbd;font-family:'Courier New',monospace;margin-bottom:4px;">
                     <span>RSI: {tech.get('rsi','-')}</span><span>MACD: {tech.get('macd',{}).get('trend','-')}</span><span>OBV: {'流入' if tech.get('flow',{}).get('obv_slope',0)>0 else '流出'}</span><span>Wkly: {tech.get('trend_weekly','-')}</span>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;font-size:11px;color:#bdbdbd;font-family:'Courier New',monospace;margin-bottom:8px;">
-                    <span style="{vol_style}">VR: {vol_ratio}</span><span>Div: {risk.get('divergence','无')}</span><span>%B: {risk.get('bollinger_pct_b',0.5)}</span>
-                </div>
-                <div style="margin-bottom:8px;">{reasons}</div>
-                <div style="margin-top:5px;">{render_dots(r.get('history',[]))}</div>
-                {committee_html}
-            </div>
-            """
-        except Exception as e:
-            logger.error(f"渲染错误 {r.get('name')}: {e}")
-
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body {{ background: #0a0a0a; color: #f0e6d2; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-width: 660px; margin: 0 auto; padding: 20px; }}
-        .main-container {{ border: 2px solid #333; border-top: 5px solid #ffb74d; border-radius: 4px; padding: 20px; background: linear-gradient(180deg, #1b1b1b 0%, #000000 100%); }}
-        .header {{ text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 25px; }}
-        .title {{ color: #ffb74d; margin: 0; font-size: 32px; font-weight: 800; font-family: 'Times New Roman', serif; letter-spacing: 2px; }}
-        .subtitle {{ font-size: 11px; color: #888; margin-top: 8px; text-transform: uppercase; }}
-        
-        /* 新闻雷达 */
-        .radar-panel {{ background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 15px; margin-bottom: 20px; }}
-        .radar-title {{ font-size: 14px; color: #ffb74d; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px; }}
-
-        /* V12 风格 CIO/Advisor 板块 */
-        .cio-section, .advisor-section {{ background: #111; border: 1px solid #333; border-left: 4px solid #5d4037; padding: 20px; margin-bottom: 20px; border-radius: 2px; }}
-        .cio-section {{ border-left-color: #d32f2f; }} /* CIO 红色调 */
-        .advisor-section {{ border-left-color: #ffb74d; }} /* 玄铁 金色调 */
-        
-        .section-title {{ font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #eee; text-transform: uppercase; letter-spacing: 1px; }}
-        
-        .footer {{ text-align: center; font-size: 10px; color: #444; margin-top: 40px; }}
-    </style></head><body>
-        <div class="main-container">
-            <div class="header">
-                <h1 class="title">XUANTIE QUANT</h1>
-                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.13 PANORAMA</div>
-            </div>
-            
-            <div class="radar-panel">
-                <div class="radar-title">📡 全景情报雷达 (AI Vision)</div>
-                {news_html}
-            </div>
-
-            <div class="cio-section">
-                <div class="section-title">🛑 CIO 战略审计</div>
-                {cio_html}
-            </div>
-
-            <div class="advisor-section">
-                <div class="section-title">🗡️ 玄铁先生·实战复盘</div>
-                {advisor_html}
-            </div>
-
-            {rows}
-            <div class="footer">EST. 2026 | POWERED BY CAILIAN & JINSHI DATA</div>
-        </div>
-    </body></html>"""
-
-def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, analyst, macro_str, base_amt, max_daily):
-    res = None
-    cio_log = ""
-    # [V14.13 新增] 返回本次用到的新闻列表
-    used_news = [] 
-    
-    try:
-        time.sleep(random.uniform(1.0, 3.0)) 
-        logger.info(f"Analyzing {fund['name']}...")
-        
-        data = fetcher.get_fund_history(fund['code'])
-        if data is None or data.empty: return None, "", []
-
-        tech = TechnicalAnalyzer.calculate_indicators(data)
-        if not tech: return None, "", []
-
-        try:
-            val_mult, val_desc = val_engine.get_valuation_status(fund.get('index_name'), fund.get('strategy_type'))
-        except:
-            val_mult, val_desc = 1.0, "估值异常"
-
-        with tracker_lock: pos = tracker.get_position(fund['code'])
-
-        ai_adj = 0; ai_res = {}
-        keyword = fund.get('sector_keyword', fund['name']) 
-        
-        if analyst and (pos['shares']>0 or tech['quant_score']>=60 or tech['quant_score']<=35):
-            # 获取行业新闻
-            sector_news_list = analyst.fetch_news_titles(keyword)
-            # 分析
-            ai_res = analyst.analyze_fund_v4(fund['name'], tech, macro_str, sector_news_list)
-            ai_adj = ai_res.get('adjustment', 0)
-            
-            # [收集新闻] 将 AI 看到的行业新闻加入列表
-            for n_str in sector_news_list:
-                # 简单解析 [时间] 标题
-                if "]" in n_str:
-                    t_part, title_part = n_str.split("]", 1)
-                    used_news.append({"title": title_part.strip(), "time": t_part.replace("[", "").strip()})
-                else:
-                    used_news.append({"title": n_str, "time": ""})
-
-        amt, lbl, is_sell, s_val = calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily, pos, fund.get('strategy_type'))
-        
-        with tracker_lock:
-            tracker.record_signal(fund['code'], lbl)
-            if amt > 0: tracker.add_trade(fund['code'], fund['name'], amt, tech['price'])
-            elif is_sell: tracker.add_trade(fund['code'], fund['name'], s_val, tech['price'], True)
-
-        bull = ai_res.get('bull_say', '无')
-        bear = ai_res.get('bear_say', '无')
-        cro_tech = tech.get('tech_cro_comment', '无')
-        
-        cio_log = f"""
-【{fund['name']}】: {lbl}
-- 状态: 评分{tech.get('quant_score')}, {val_desc}, 投委会调整{ai_adj:+d}
-- 风控: {cro_tech}
-- 辩论: 多方<{bull}> vs 空方<{bear}>
-"""
-        res = {
-            "name": fund['name'], "code": fund['code'], 
-            "amount": amt, "sell_value": s_val, "position_type": lbl, "is_sell": is_sell, 
-            "tech": tech, "ai_analysis": ai_res, "history": tracker.get_signal_history(fund['code']),
-            "pos_cost": pos.get('cost', 0), "pos_shares": pos.get('shares', 0)
-        }
-    except Exception as e:
-        logger.error(f"处理错误 {fund['name']}: {e}")
-        return None, "", []
-    return res, cio_log, used_news
-
-def main():
-    config = load_config()
-    fetcher = DataFetcher()
-    scanner = MarketScanner()
-    tracker = PortfolioTracker()
-    val_engine = ValuationEngine()
-    
-    logger.info(">>> [V14.13] 启动玄铁量化 (Panorama Intelligence)...")
-    tracker.confirm_trades()
-    try: analyst = NewsAnalyst()
-    except: analyst = None
-
-    # 1. 获取宏观新闻
-    macro_news_list = scanner.get_macro_news()
-    macro_str = " | ".join([n['title'] for n in macro_news_list])
-    
-    # [全景新闻池] 初始化
-    all_news_seen = []
-    # 先加入宏观新闻
-    for n in macro_news_list:
-        all_news_seen.append(n)
-
-    results = []; cio_lines = [f"【宏观环境】: {macro_str}\n"]
-    
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_fund = {executor.submit(
-            process_single_fund, 
-            fund, config, fetcher, scanner, tracker, val_engine, analyst, macro_str, 
-            config['global']['base_invest_amount'], config['global']['max_daily_invest']
-        ): fund for fund in config.get('funds', [])}
-        
-        for future in as_completed(future_to_fund):
-            try:
-                # [接收新闻]
-                res, log, fund_news = future.result()
-                if res: 
-                    results.append(res)
-                    cio_lines.append(log)
-                    # 收集该基金用到的新闻
-                    all_news_seen.extend(fund_news)
-            except Exception as e: logger.error(f"线程异常: {e}")
-
-    if results:
-        results.sort(key=lambda x: -x['tech'].get('final_score', 0))
-        full_report = "\n".join(cio_lines)
-        
-        cio_html = analyst.review_report(full_report) if analyst else "<p>CIO 缺席</p>"
-        advisor_html = analyst.advisor_review(full_report, macro_str) if analyst else "<p>玄铁先生闭关中</p>"
-        
-        # 传入全景新闻池
-        html = render_html_report_v13(all_news_seen, results, cio_html, advisor_html) 
-        send_email("🗡️ 玄铁量化 V14.13 最终决议", html)
-
-if __name__ == "__main__": main()
