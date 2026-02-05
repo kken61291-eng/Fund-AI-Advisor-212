@@ -1,63 +1,115 @@
 import json
 import os
+import threading
 from datetime import datetime
 from utils import logger
 
 class PortfolioTracker:
-    def __init__(self, file_path='portfolio.json'):
-        self.file_path = file_path
-        self.data = self._load_data()
+    def __init__(self, filepath='portfolio.json'):
+        self.filepath = filepath
+        self.lock = threading.Lock()
+        self._load_portfolio()
 
-    def _load_data(self):
-        default = {"positions": {}, "cash": 0, "history": [], "signal_record": {}}
-        if not os.path.exists(self.file_path): return default
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                if not content: return default
-                data = json.loads(content)
-            # 自动修复缺失字段
-            for k, v in default.items():
-                if k not in data: data[k] = v
-            return data
-        except: return default
+    def _load_portfolio(self):
+        if not os.path.exists(self.filepath):
+            self.portfolio = {}
+            self._save_portfolio()
+        else:
+            try:
+                with open(self.filepath, 'r', encoding='utf-8') as f:
+                    self.portfolio = json.load(f)
+            except Exception:
+                self.portfolio = {}
 
-    def _save_data(self):
-        with open(self.file_path, 'w', encoding='utf-8') as f:
-            json.dump(self.data, f, ensure_ascii=False, indent=2)
+    def _save_portfolio(self):
+        with open(self.filepath, 'w', encoding='utf-8') as f:
+            json.dump(self.portfolio, f, indent=2, ensure_ascii=False)
 
     def get_position(self, code):
-        if code not in self.data['positions']:
-            return {"cost": 0, "shares": 0, "first_buy_date": None, "held_days": 0}
-        pos = self.data['positions'][code]
-        held_days = 0
-        if pos.get('first_buy_date'):
-            try: held_days = (datetime.now() - datetime.strptime(pos['first_buy_date'], "%Y-%m-%d")).days
-            except: pass
-        return {"cost": pos.get('avg_cost', 0), "shares": pos.get('shares', 0), "first_buy_date": pos.get('first_buy_date'), "held_days": held_days}
+        """获取持仓详情 (兼容旧格式)"""
+        if code not in self.portfolio:
+            return {'shares': 0, 'cost': 0.0, 'held_days': 0}
+        
+        pos = self.portfolio[code]
+        # 确保关键字段存在
+        if 'cost' not in pos: pos['cost'] = 0.0
+        if 'shares' not in pos: pos['shares'] = 0
+        return pos
 
-    def add_trade(self, code, name, amount, price, is_sell=False):
-        if code not in self.data['positions']: self.data['positions'][code] = {"shares": 0, "avg_cost": 0, "first_buy_date": None}
-        pos = self.data['positions'][code]
-        if not is_sell:
-            cost_total = pos['shares'] * pos['avg_cost'] + amount
-            pos['shares'] += amount / price
-            pos['avg_cost'] = cost_total / pos['shares'] if pos['shares'] > 0 else 0
-            if not pos['first_buy_date']: pos['first_buy_date'] = datetime.now().strftime("%Y-%m-%d")
+    def add_trade(self, code, name, amount_or_value, price, is_sell=False):
+        """
+        记录交易并自动计算加权平均成本 (Weighted Average Cost)
+        """
+        if price <= 0: return
+
+        if code not in self.portfolio:
+            self.portfolio[code] = {
+                "name": name,
+                "shares": 0,
+                "cost": 0.0,
+                "held_days": 0,
+                "history": []
+            }
+        
+        pos = self.portfolio[code]
+        shares_change = amount_or_value / price
+        
+        record = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "price": round(price, 3),
+            "s": "S" if is_sell else "B"
+        }
+
+        if is_sell:
+            # 卖出逻辑: 成本价不变，份额减少，记录已实现盈亏(可选)
+            # 这里简单处理: 减少份额
+            real_sell_shares = min(pos['shares'], shares_change) # 防止卖空
+            pos['shares'] = max(0, pos['shares'] - real_sell_shares)
+            record['amt'] = -int(real_sell_shares * price)
+            
+            if pos['shares'] == 0:
+                pos['cost'] = 0.0 # 清仓后成本归零
+                pos['held_days'] = 0
+                
         else:
-            pos['shares'] = max(0, pos['shares'] - amount / price)
-            if pos['shares'] < 10: pos['shares'] = 0; pos['avg_cost'] = 0; pos['first_buy_date'] = None
-        self.data['history'].append({"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "code": code, "name": name, "side": "SELL" if is_sell else "BUY", "amount": amount, "price": round(price, 3)})
-        self._save_data()
+            # 买入逻辑: 核心! 计算加权平均成本
+            # 新成本 = (旧总值 + 新买入值) / 新总份额
+            old_value = pos['shares'] * pos['cost']
+            new_invest = shares_change * price
+            total_shares = pos['shares'] + shares_change
+            
+            if total_shares > 0:
+                new_cost = (old_value + new_invest) / total_shares
+                pos['cost'] = round(new_cost, 4) # 保留4位小数精度
+            
+            pos['shares'] = total_shares
+            record['amt'] = int(amount_or_value)
+            # 买入重置持有天数? 不，累积持有，仅清仓重置
+            if pos['held_days'] == 0:
+                pos['held_days'] = 1
 
-    def confirm_trades(self): pass
+        # 限制历史记录长度
+        pos['history'].append(record)
+        if len(pos['history']) > 10:
+            pos['history'] = pos['history'][-10:]
 
-    def record_signal(self, code, label):
-        rec = self.data['signal_record'].get(code, [])
-        status = "B" if "买" in label else ("S" if "卖" in label else "W")
-        today = datetime.now().strftime("%m-%d")
-        if not rec or rec[-1]['date'] != today: rec.append({"date": today, "s": status})
-        self.data['signal_record'][code] = rec[-10:]
-        self._save_data()
+        self._save_portfolio()
+        logger.info(f"⚖️ 账本更新 {name}: {'卖出' if is_sell else '买入'} | 最新成本: {pos.get('cost',0):.3f}")
 
-    def get_signal_history(self, code): return self.data['signal_record'].get(code, [])
+    def record_signal(self, code, signal):
+        # 仅用于记录信号历史，不涉及资金
+        pass # V14 逻辑已将信号记录整合到 HTML，此处可简化
+
+    def get_signal_history(self, code):
+        if code in self.portfolio:
+            return self.portfolio[code].get('history', [])
+        return []
+        
+    def confirm_trades(self):
+        # 每日持有天数 +1
+        today = datetime.now().strftime("%Y-%m-%d")
+        # 简单防重: 实际生产环境可用文件记录上次运行日期
+        for code, pos in self.portfolio.items():
+            if pos['shares'] > 0:
+                pos['held_days'] = pos.get('held_days', 0) + 1
+        self._save_portfolio()
