@@ -12,13 +12,14 @@ from valuation_engine import ValuationEngine
 from portfolio_tracker import PortfolioTracker
 from utils import send_email, logger
 
+# 全局锁
 tracker_lock = threading.Lock()
 
 def load_config():
     with open('config.yaml', 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
-# [核心决策逻辑 V14.5: 增加技术风控官一票否决权]
+# [核心决策逻辑 V14.5: 保持不变]
 def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily, pos, strategy_type):
     base_score = tech.get('quant_score', 50)
     tactical_score = max(0, min(100, base_score + ai_adj))
@@ -29,12 +30,10 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
     
     # 获取技术风控官的令牌
     cro_signal = tech.get('tech_cro_signal', 'PASS')
-    cro_comment = tech.get('tech_cro_comment', '')
     
     tactical_mult = 0
     reasons = []
 
-    # 1. 正常战术评分
     if tactical_score >= 85: tactical_mult = 2.0; reasons.append("战术:极强")
     elif tactical_score >= 70: tactical_mult = 1.0; reasons.append("战术:走强")
     elif tactical_score >= 60: tactical_mult = 0.5; reasons.append("战术:企稳")
@@ -42,7 +41,6 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
 
     final_mult = tactical_mult
     
-    # 2. 战略(估值)修正
     if tactical_mult > 0:
         if val_mult < 0.5: final_mult = 0; reasons.append(f"战略:高估刹车")
         elif val_mult > 1.0: final_mult *= val_mult; reasons.append(f"战略:低估加倍")
@@ -53,16 +51,12 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
         if val_mult >= 1.5 and strategy_type in ['core', 'dividend']:
             final_mult = 0.5; reasons.append(f"战略:左侧定投")
 
-    # 3. [V14.5 新增] 技术风控官一票否决
+    # 技术风控官一票否决
     if cro_signal == "VETO":
         if final_mult > 0:
-            final_mult = 0 # 强制取消买入
+            final_mult = 0
             reasons.append(f"🛡️风控:否决买入")
-        elif final_mult == 0:
-            # 如果原本是观望，且风控报警，可视情况减仓
-            pass 
     
-    # 4. 锁仓风控 (T+N)
     held_days = pos.get('held_days', 999)
     if final_mult < 0 and pos['shares'] > 0 and held_days < 7:
         final_mult = 0; reasons.append(f"规则:锁仓({held_days}天)")
@@ -82,7 +76,7 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
     if reasons: tech['quant_reasons'] = reasons
     return final_amt, label, is_sell, sell_val
 
-# [V14.5 UI: 增加风控官展示]
+# [UI 渲染 V14.5]
 def render_html_report_v13(macro_list, results, cio_html, advisor_html):
     macro_html = ""
     for news in macro_list:
@@ -107,13 +101,14 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
             risk = tech.get('risk_factors', {})
             final_score = tech.get('final_score', 0)
             
-            # 风控官数据
+            # 风控官
             cro_signal = tech.get('tech_cro_signal', 'PASS')
             cro_comment = tech.get('tech_cro_comment', '无')
-            cro_style = "color:#66bb6a;font-weight:bold;" # 绿色通过
-            if cro_signal == "VETO": cro_style = "color:#ef5350;font-weight:bold;" # 红色否决
-            elif cro_signal == "WARN": cro_style = "color:#ffb74d;font-weight:bold;" # 黄色警告
+            cro_style = "color:#66bb6a;font-weight:bold;"
+            if cro_signal == "VETO": cro_style = "color:#ef5350;font-weight:bold;"
+            elif cro_signal == "WARN": cro_style = "color:#ffb74d;font-weight:bold;"
 
+            # 收益
             profit_html = ""
             pos_cost = r.get('pos_cost', 0.0)
             pos_shares = r.get('pos_shares', 0)
@@ -124,6 +119,7 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
                 p_color = "#ff5252" if profit_val > 0 else "#69f0ae" 
                 profit_html = f"""<div style="font-size:12px;margin-bottom:8px;background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:3px;display:flex;justify-content:space-between;"><span style="color:#aaa;">持有收益:</span><span style="color:{p_color};font-weight:bold;">{profit_val:+.1f}元 ({profit_pct:+.2f}%)</span></div>"""
             
+            # 操作
             if r['amount'] > 0: 
                 border_color = "#d32f2f"; bg_gradient = "linear-gradient(90deg, rgba(60,10,10,0.9) 0%, rgba(20,20,20,0.95) 100%)"; act_html = f"<span style='color:#ff8a80;font-weight:bold'>+{r['amount']:,}</span>"
             elif r.get('is_sell'): 
@@ -141,7 +137,6 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
             bull_say = ai_data.get('bull_say')
             bear_say = ai_data.get('bear_say')
             chairman = ai_data.get('comment', '无')
-            risk_alert = ai_data.get('risk_alert', '无')
 
             if bull_say and bear_say:
                 committee_html = f"""
@@ -157,7 +152,9 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
                 </div>"""
 
             vol_ratio = risk.get('vol_ratio', 1.0)
+            div = risk.get('divergence', '无')
             vol_style = "color:#ffb74d;" if vol_ratio < 0.8 else ("color:#ff8a80;" if vol_ratio > 2.0 else "color:#bbb;")
+            div_style = "color:#ef5350;font-weight:bold;" if "顶背离" in str(div) else ("color:#a5d6a7;" if "底背离" in str(div) else "color:#bbb;")
 
             rows += f"""
             <div style="background:{bg_gradient};border-left:4px solid {border_color};margin-bottom:15px;padding:15px;border-radius:6px;box-shadow:0 4px 10px rgba(0,0,0,0.6);border-top:1px solid #333;">
@@ -180,7 +177,7 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
                     <span>RSI: {tech.get('rsi','-')}</span><span>MACD: {tech.get('macd',{}).get('trend','-')}</span><span>OBV: {'流入' if tech.get('flow',{}).get('obv_slope',0)>0 else '流出'}</span><span>Wkly: {tech.get('trend_weekly','-')}</span>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;font-size:11px;color:#bdbdbd;font-family:'Courier New',monospace;margin-bottom:8px;">
-                    <span style="{vol_style}">VR: {vol_ratio}</span><span>Div: {risk.get('divergence','无')}</span><span>%B: {risk.get('bollinger_pct_b',0.5)}</span>
+                    <span style="{vol_style}">VR: {vol_ratio}</span><span style="{div_style}">Div: {div}</span><span>%B: {risk.get('bollinger_pct_b',0.5)}</span>
                 </div>
                 <div style="margin-bottom:8px;">{reasons}</div>
                 <div style="margin-top:5px;">{render_dots(r.get('history',[]))}</div>
@@ -205,7 +202,7 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
         <div class="main-container">
             <div class="header">
                 <h1 class="title">XUANTIE QUANT</h1>
-                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.5 FEDERAL SYSTEM</div>
+                <div class="subtitle">HEAVY SWORD, NO EDGE | V14.8 FEDERAL SYSTEM</div>
                 <div class="macro-panel"><div style="font-size:11px;color:#ffb74d;margin-bottom:10px;text-transform:uppercase;border-bottom:1px solid #333;padding-bottom:4px;">Global Macro Radar</div>{macro_html}</div>
             </div>
             <div class="cio-paper">
@@ -223,17 +220,17 @@ def render_html_report_v13(macro_list, results, cio_html, advisor_html):
 
 def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, analyst, macro_str, base_amt, max_daily):
     res = None
-    cio_log = ""
+    cio_log = "" # 初始化日志
+    
     try:
         time.sleep(random.uniform(1.0, 3.0)) 
         logger.info(f"Analyzing {fund['name']}...")
         
         data = fetcher.get_fund_history(fund['code'])
-        if data is None or data.empty: 
-            return None, f"数据失败: {fund['name']}"
+        if data is None or data.empty: return None, ""
 
         tech = TechnicalAnalyzer.calculate_indicators(data)
-        if not tech: return None, f"指标失败: {fund['name']}"
+        if not tech: return None, ""
 
         try:
             val_mult, val_desc = val_engine.get_valuation_status(fund.get('index_name'), fund.get('strategy_type'))
@@ -255,7 +252,19 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
             if amt > 0: tracker.add_trade(fund['code'], fund['name'], amt, tech['price'])
             elif is_sell: tracker.add_trade(fund['code'], fund['name'], s_val, tech['price'], True)
 
-        cio_log = f"- {fund['name']}: {lbl} (投委会:{ai_adj:+d} | 估值:{val_desc})"
+        # [V14.8] 构建高保真情报简报
+        # 将微观层面的所有关键信息打包，供上层（CIO/玄铁先生）决策
+        bull = ai_res.get('bull_say', '无')
+        bear = ai_res.get('bear_say', '无')
+        cro_tech = tech.get('tech_cro_comment', '无')
+        
+        cio_log = f"""
+【{fund['name']}】: {lbl}
+- 状态: 评分{tech.get('quant_score')}, {val_desc}, 投委会调整{ai_adj:+d}
+- 风控: {cro_tech}
+- 辩论: 多方<{bull}> vs 空方<{bear}>
+"""
+
         res = {
             "name": fund['name'], "code": fund['code'], 
             "amount": amt, "sell_value": s_val, "position_type": lbl, "is_sell": is_sell, 
@@ -265,7 +274,7 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
         
     except Exception as e:
         logger.error(f"处理错误 {fund['name']}: {e}")
-        return None, f"Error {fund['name']}: {e}"
+        return None, ""
     return res, cio_log
 
 def main():
@@ -275,14 +284,14 @@ def main():
     tracker = PortfolioTracker()
     val_engine = ValuationEngine()
     
-    logger.info(">>> [V14.5] 启动玄铁量化 (Federal System + Technical CRO)...")
+    logger.info(">>> [V14.8] 启动玄铁量化 (High-Fidelity Intelligence Link)...")
     tracker.confirm_trades()
     try: analyst = NewsAnalyst()
     except: analyst = None
 
     macro_news = scanner.get_macro_news()
     macro_str = " | ".join([n['title'] for n in macro_news])
-    results = []; cio_lines = [f"【宏观环境】: {macro_str}"]
+    results = []; cio_lines = [f"【宏观环境】: {macro_str}\n"]
     
     with ThreadPoolExecutor(max_workers=3) as executor:
         future_to_fund = {executor.submit(process_single_fund, fund, config, fetcher, scanner, tracker, val_engine, analyst, macro_str, config['global']['base_invest_amount'], config['global']['max_daily_invest']): fund for fund in config['funds']}
@@ -294,9 +303,12 @@ def main():
 
     if results:
         results.sort(key=lambda x: -x['tech'].get('final_score', 0))
-        cio_html = analyst.review_report("\n".join(cio_lines)) if analyst else "<p>CIO 缺席</p>"
-        advisor_html = analyst.advisor_review("\n".join(cio_lines), macro_str) if analyst else "<p>玄铁先生闭关中</p>"
+        # 将 cio_lines 列表拼接成完整的长文本报告
+        full_report = "\n".join(cio_lines)
+        
+        cio_html = analyst.review_report(full_report) if analyst else "<p>CIO 缺席</p>"
+        advisor_html = analyst.advisor_review(full_report, macro_str) if analyst else "<p>玄铁先生闭关中</p>"
         html = render_html_report_v13(macro_news, results, cio_html, advisor_html) 
-        send_email("🗡️ 玄铁量化 V14.5 联邦决议", html)
+        send_email("🗡️ 玄铁量化 V14.8 联邦决议", html)
 
 if __name__ == "__main__": main()
