@@ -17,6 +17,17 @@ class NewsAnalyst:
             "Content-Type": "application/json"
         }
 
+    def _format_short_time(self, time_str):
+        try:
+            # 尝试解析
+            dt = datetime.strptime(str(time_str), "%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%m-%d %H:%M")
+        except:
+            # 兜底截取
+            s = str(time_str)
+            if len(s) > 10: return s[5:16]
+            return s
+
     @retry(retries=2, delay=2)
     def fetch_news_titles(self, keyword):
         if not keyword: return []
@@ -24,20 +35,21 @@ class NewsAnalyst:
         try:
             df = ak.stock_news_em(symbol="要闻")
             keys = keyword.split()
-            junk_words = ["汇总", "集锦", "收评"]
+            junk_words = ["汇总", "集锦", "收评", "早报"]
             
             for _, row in df.iterrows():
                 title = str(row.get('title', ''))
-                # 过滤垃圾词
+                raw_time = str(row.get('public_time', ''))
+                
                 if any(jw in title for jw in junk_words): continue
                 
                 if any(k in title for k in keys):
-                    # 格式化: [时间] 标题
-                    time_str = str(row.get('public_time',''))[-5:]
+                    # [修复] 统一时间格式
+                    time_str = self._format_short_time(raw_time)
                     news_list.append(f"[{time_str}] {title}")
             
             if not news_list:
-                return [f"近期无'{keyword}'直接资讯，参考宏观面。"]
+                return [f"近期无'{keyword}'资讯，参考宏观。"]
             return news_list[:5] 
         except Exception as e:
             logger.warning(f"行业新闻抓取失败 {keyword}: {e}")
@@ -54,7 +66,6 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # 1. 提取硬数据
         score = tech_indicators.get('quant_score', 50)
         trend = tech_indicators.get('trend_weekly', '无趋势')
         valuation = tech_indicators.get('valuation_desc', '未知')
@@ -108,7 +119,7 @@ class NewsAnalyst:
                 "comment": data.get("chairman_conclusion", "需人工介入"),
                 "adjustment": int(data.get("adjustment", 0)),
                 "risk_alert": data.get("risk_alert", "无"),
-                "used_news": sector_news # [新增] 返回所使用的新闻，用于前端展示
+                "used_news": sector_news 
             }
         except Exception as e:
             logger.error(f"投委会崩溃 {fund_name}: {e}")
@@ -117,7 +128,7 @@ class NewsAnalyst:
     def _fallback_result(self, news):
         return {"bull_say": "数据缺失", "bear_say": "风险未知", "comment": "连接中断", "adjustment": 0, "risk_alert": "API Error", "used_news": news}
 
-    # --- 2. CIO 战略审计 ---
+    # --- CIO 战略审计 ---
     @retry(retries=2, delay=2)
     def review_report(self, report_text):
         prompt = f"""
@@ -145,7 +156,7 @@ class NewsAnalyst:
         """
         return self._call_llm_text(prompt, "CIO 战略审计")
 
-    # --- 3. 玄铁先生复盘 (人设重塑：去江湖气，存哲学气) ---
+    # --- 玄铁先生复盘 ---
     @retry(retries=2, delay=2)
     def advisor_review(self, report_text, macro_str):
         prompt = f"""
