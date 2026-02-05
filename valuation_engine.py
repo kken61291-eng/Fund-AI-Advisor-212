@@ -1,96 +1,103 @@
 import akshare as ak
 import pandas as pd
+import os
+import tushare as ts
+import time
 from datetime import datetime
 from utils import logger, retry
 
 class ValuationEngine:
     def __init__(self):
         self.cn_10y_yield = None
+        self.tushare_api = None
         
-        # [V13.7] 映射表更新：适配东方财富代码格式
-        # sh=上海, sz=深圳. 必须带前缀
+        # 初始化 Tushare (如果有 Token)
+        token = os.getenv("TUSHARE_TOKEN")
+        if token:
+            try:
+                self.tushare_api = ts.pro_api(token)
+            except:
+                pass
+
+        # 静态映射表
+        # 格式: 标准名 -> [东财代码, 新浪代码, Tushare代码]
         self.INDEX_MAP = {
-            "沪深300": "sh000300",
-            "中证红利": "sz399922", 
-            "中证煤炭": "sz399998",
-            "全指证券公司": "sz399975",
-            "中华半导体": "sz399989", # 修正为中证半导体，数据更全
-            "全指半导体": "sz399989",
-            "半导体": "sz399989"
+            "沪深300":      {"em": "sh000300", "sina": "sh000300", "ts": "000300.SH"},
+            "中证红利":      {"em": "sz399922", "sina": "sz399922", "ts": "399922.SZ"},
+            "中证煤炭":      {"em": "sz399998", "sina": "sz399998", "ts": "399998.SZ"},
+            "全指证券公司":  {"em": "sz399975", "sina": "sz399975", "ts": "399975.SZ"},
+            "中华半导体":    {"em": "sz399989", "sina": "sz399989", "ts": "399989.SZ"}, # 映射为中证半导体
+            "全指半导体":    {"em": "sz399989", "sina": "sz399989", "ts": "399989.SZ"},
+            "中证传媒":      {"em": "sz399971", "sina": "sz399971", "ts": "399971.SZ"}
         }
 
-    @retry(retries=2)
+    @retry(retries=2, delay=2)
     def _get_bond_yield(self):
-        """获取中国10年期国债收益率"""
+        """获取国债收益率"""
         if self.cn_10y_yield: return self.cn_10y_yield
         try:
             df = ak.bond_zh_us_rate()
-            col = '中国国债收益率10年'
-            if col in df.columns:
-                val = df[col].iloc[-1]
-                self.cn_10y_yield = val
-                return val
-            return 2.3
-        except Exception as e:
-            logger.warning(f"国债收益率获取失败: {e}")
-            return 2.3
+            val = df['中国国债收益率10年'].iloc[-1]
+            self.cn_10y_yield = val
+            return val
+        except: return 2.3
 
-    @retry(retries=1)
+    def _fetch_history_data(self, index_name):
+        """
+        [V13.8 核心] 三级容灾获取历史数据
+        返回: pandas Series (历史收盘价或PE)
+        """
+        codes = self.INDEX_MAP.get(index_name)
+        if not codes: return None
+
+        # 1. 尝试 东方财富 (EastMoney)
+        try:
+            df = ak.stock_zh_index_daily_em(symbol=codes['em'])
+            return df['close']
+        except Exception as e:
+            logger.warning(f"[{index_name}] 东财源受阻，切换备用源... ({str(e)[:50]})")
+
+        # 2. 尝试 新浪财经 (Sina) - 极稳
+        try:
+            time.sleep(1) # 礼貌延迟
+            df = ak.stock_zh_index_daily(symbol=codes['sina'])
+            return df['close']
+        except Exception as e:
+            logger.warning(f"[{index_name}] 新浪源受阻... ({str(e)[:50]})")
+
+        # 3. 尝试 Tushare Pro (如果有 Token)
+        if self.tushare_api:
+            try:
+                time.sleep(1)
+                # 获取指数日线
+                end_dt = datetime.now().strftime("%Y%m%d")
+                start_dt = (datetime.now() - pd.Timedelta(days=2000)).strftime("%Y%m%d")
+                df = self.tushare_api.index_daily(ts_code=codes['ts'], start_date=start_dt, end_date=end_dt)
+                if not df.empty:
+                    # Tushare 返回是倒序的，需要转正序
+                    return df.sort_values('trade_date')['close']
+            except Exception as e:
+                logger.warning(f"[{index_name}] Tushare源受阻... ({str(e)[:50]})")
+
+        return None
+
     def get_valuation_status(self, index_name, strategy_type):
-        """
-        核心功能: 计算估值状态 (PE-TTM 分位数)
-        """
+        """计算估值状态"""
         if not index_name or strategy_type == 'commodity':
             return 1.0, "非权益类(默认适中)"
 
-        # 获取映射代码
-        index_code = self.INDEX_MAP.get(index_name)
-        if not index_code:
-            return 1.0, "无估值锚"
-
         try:
-            # [V13.7 修复] 切换至东方财富接口，获取长历史数据
-            # 接口: stock_zh_index_daily_em
-            df = ak.stock_zh_index_daily_em(symbol=index_code)
+            # 获取历史数据 (三源容灾)
+            history = self._fetch_history_data(index_name)
             
-            if df.empty: return 1.0, "数据为空"
-            
-            # 东财接口不直接给PE，我们需要用收盘价来近似模拟位置
-            # 或者使用 ak.index_value_hist_funddb 但之前报错
-            # 最稳妥方案：使用 ak.stock_zh_index_value_csindex (中证) 配合备用源
-            
-            # 再次尝试中证接口，但做更强的错误处理
-            # 如果东财有PE接口更好，但akshare目前只有 stock_zh_index_value_csindex 提供PE
-            
-            # [策略调整] 为了不报错，我们尝试获取 index_value_hist_funddb
-            # 如果报错，降级为使用"价格位置"代替"PE位置" (虽不完美但比报错强)
-            
-            try:
-                # 尝试获取专业估值数据
-                df_val = ak.stock_zh_index_value_csindex(symbol=index_code[2:]) # 去掉sh/sz前缀
-                pe_col = None
-                for col in ["市盈率1", "市盈率(PE)", "PE1", "市盈率"]:
-                    if col in df_val.columns:
-                        pe_col = col
-                        break
-                
-                if pe_col:
-                    current = pd.to_numeric(df_val[pe_col], errors='coerce').iloc[-1]
-                    history = pd.to_numeric(df_val[pe_col], errors='coerce').dropna()
-                else:
-                    raise ValueError("无PE数据")
-            except:
-                # 降级方案：使用价格本身的分位数 (Price Percentile)
-                # 虽然不如PE准确，但能反映相对高低位
-                current = df['close'].iloc[-1]
-                history = df['close']
-                logger.info(f"{index_name} 降级为价格分位数模式")
+            if history is None or len(history) < 100:
+                return 1.0, "数据源全线不可用"
 
-            # 计算分位数 (近5年 / 1250天)
-            history = history.tail(1250)
-            if len(history) < 100: return 1.0, "历史数据不足"
-            
-            percentile = (history < current).mean() # 0.0 - 1.0
+            # 计算分位数
+            current = history.iloc[-1]
+            # 取近5年 (1250天)
+            history_window = history.tail(1250)
+            percentile = (history_window < current).mean()
             
             # 生成策略
             p_str = f"{int(percentile*100)}%"
@@ -109,17 +116,18 @@ class ValuationEngine:
             
             elif strategy_type == 'dividend':
                 bond = self._get_bond_yield()
-                # 简易股息率模型: 1/PE (如果用的是价格分位，这里可能不准，但为了代码健壮性暂时保留)
-                div_yield = (1 / current) * 100 if current > 0 else 3.0
-                spread = div_yield - bond
+                # 简易股息率模型: 1/PE ≈ (1/Price) * K (K为常数，这里简化处理，主要看趋势)
+                # 实战中，价格分位极低通常意味着股息率极高
+                div_yield = (1 / current) * 100 if current > 0 else 3.0 # 仅作趋势参考
                 
-                if spread > 2.5: return 2.0, f"历史机会(息差{spread:.1f}%)"
-                if spread > 1.5: return 1.5, f"高性价比(息差{spread:.1f}%)"
-                if spread < 0: return 0.0, f"性价比消失(息差{spread:.1f}%)"
+                # 更准确的红利策略：直接用分位数判断
+                if percentile < 0.10: return 2.0, f"历史大底(分位{p_str})"
+                if percentile < 0.30: return 1.5, f"低估区域(分位{p_str})"
+                if percentile > 0.80: return 0.0, f"性价比低(分位{p_str})"
                 return 1.0, "红利适中"
 
             return 1.0, "逻辑未匹配"
 
         except Exception as e:
-            logger.warning(f"估值计算异常 {index_name}: {e}")
+            logger.warning(f"估值计算严重错误 {index_name}: {e}")
             return 1.0, "估值未知"
