@@ -137,12 +137,12 @@ def render_html_report_v13(macro_list, results, cio, advisor):
                     
                     <div style="display:flex;gap:10px;margin-bottom:8px;">
                         <div style="flex:1;background:rgba(27,94,32,0.2);padding:8px;border-radius:4px;border-left:2px solid #66bb6a;">
-                            <div style="color:#66bb6a;font-size:11px;font-weight:bold;margin-bottom:4px;">🦊 CGO (增长官)</div>
+                            <div style="color:#66bb6a;font-size:11px;font-weight:bold;margin-bottom:4px;">🦊 CGO (多头)</div>
                             <div style="color:#c8e6c9;font-size:11px;line-height:1.3;font-style:italic;">"{bull_say}"</div>
                         </div>
                         
                         <div style="flex:1;background:rgba(183,28,28,0.2);padding:8px;border-radius:4px;border-left:2px solid #ef5350;">
-                            <div style="color:#ef5350;font-size:11px;font-weight:bold;margin-bottom:4px;">🐻 CRO (风控官)</div>
+                            <div style="color:#ef5350;font-size:11px;font-weight:bold;margin-bottom:4px;">🐻 CRO (空头)</div>
                             <div style="color:#ffcdd2;font-size:11px;line-height:1.3;font-style:italic;">"{bear_say}"</div>
                         </div>
                     </div>
@@ -215,11 +215,13 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
     res = None
     cio_log = ""
     try:
-        time.sleep(random.uniform(1.0, 3.0)) # Jitter 增加一点，给 AI 思考时间
+        time.sleep(random.uniform(1.0, 3.0)) 
         logger.info(f"Analyzing {fund['name']}...")
         
         data = fetcher.get_fund_history(fund['code'])
-        if not data: return None, f"数据失败: {fund['name']}"
+        # [修复] DataFrame 不能直接 if not data 判断
+        if data is None or data.empty: 
+            return None, f"数据失败: {fund['name']}"
 
         tech = TechnicalAnalyzer.calculate_indicators(data)
         if not tech: return None, f"指标失败: {fund['name']}"
@@ -234,7 +236,6 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
         ai_adj = 0; ai_res = {}
         if analyst and (pos['shares']>0 or tech['quant_score']>=60 or tech['quant_score']<=35):
             news = analyst.fetch_news_titles(fund['sector_keyword'])
-            # [V14.0] 调用投委会分析逻辑
             ai_res = analyst.analyze_fund_v4(fund['name'], tech, macro_str, news)
             ai_adj = ai_res.get('adjustment', 0)
 
