@@ -1,43 +1,49 @@
 global:
-  base_invest_amount: 500
-  max_daily_invest: 2000
+  base_invest_amount: 500      # 单次基准买入金额
+  max_daily_invest: 2000       # 单日最大买入上限
 
 funds:
-  # --- 核心底仓 ---
+  # --- 核心底仓 (Core & Dividend) ---
   - name: "红利ETF"
     code: "515080"
-    strategy_type: "dividend" # 专门走红利股债模型
-    sector_keyword: "红利"
-    index_name: "中证红利"     # 绑定指数锚
+    strategy_type: "dividend"  # 触发股债性价比分析
+    sector_keyword: "红利 高股息"
+    index_name: "中证红利"      # 估值锚: sz399922
 
   - name: "沪深300ETF"
     code: "510300"
     strategy_type: "core"
     sector_keyword: "沪深300"
-    index_name: "沪深300"      # 绑定指数锚
+    index_name: "沪深300"       # 估值锚: sh000300
 
-  # --- 卫星进攻 ---
+  # --- 卫星进攻 (Satellite) ---
+  - name: "传媒ETF"
+    code: "512980"             # 广发传媒ETF
+    strategy_type: "satellite" # 波动大，做波段
+    sector_keyword: "传媒 游戏 短剧"
+    index_name: "中证传媒"      # 估值锚: sz399971
+
   - name: "证券ETF"
     code: "512880"
     strategy_type: "satellite"
-    sector_keyword: "证券"
-    index_name: "全指证券公司" # 绑定指数锚
+    sector_keyword: "证券 券商"
+    index_name: "全指证券公司"  # 估值锚: sz399975
 
   - name: "煤炭ETF"
     code: "515220"
     strategy_type: "satellite"
-    sector_keyword: "煤炭"
-    index_name: "中证煤炭"
+    sector_keyword: "煤炭 能源"
+    index_name: "中证煤炭"      # 估值锚: sz399998
 
   - name: "半导体ETF"
     code: "512480"
     strategy_type: "satellite"
-    sector_keyword: "半导体"
-    index_name: "中华半导体" # 或 全指半导体
+    sector_keyword: "半导体 芯片"
+    index_name: "中华半导体"    # 估值锚: sz399989
 
-  # --- 特殊类 (无法估值) ---
+  # --- 商品/特殊 (Commodity) ---
   - name: "黄金ETF"
     code: "518880"
-    strategy_type: "commodity" # 大宗商品走特殊逻辑
-    sector_keyword: "黄金"
-    index_name: ""             # 为空则跳过估值检查
+    strategy_type: "commodity" # 跳过估值检查
+    sector_keyword: "黄金 避险"
+    index_name: ""             # 无锚
