@@ -19,29 +19,28 @@ class PortfolioTracker:
                 with open(self.filepath, 'r', encoding='utf-8') as f:
                     self.portfolio = json.load(f)
                 
-                # [核心修复] 数据清洗与迁移
-                # 自动检查现有数据，如果缺少字段则补全
-                is_dirty = False
+                # [V14.12 修复] 数据自愈：自动补全旧版数据的缺失字段
+                dirty = False
                 for code, pos in self.portfolio.items():
                     if 'shares' not in pos: 
                         pos['shares'] = 0
-                        is_dirty = True
+                        dirty = True
                     if 'cost' not in pos: 
                         pos['cost'] = 0.0
-                        is_dirty = True
+                        dirty = True
                     if 'held_days' not in pos: 
                         pos['held_days'] = 0
-                        is_dirty = True
-                    if 'history' not in pos:
+                        dirty = True
+                    if 'history' not in pos: 
                         pos['history'] = []
-                        is_dirty = True
+                        dirty = True
                 
-                if is_dirty:
+                if dirty:
                     self._save_portfolio()
-                    logger.info("🔧 账本数据已自动修复 (补全缺失字段)")
+                    logger.info("🔧 检测到旧版账本数据，已自动补全缺失字段 (Self-Healing).")
 
             except Exception as e:
-                logger.error(f"账本加载失败: {e}, 重置为空")
+                logger.error(f"账本加载失败: {e}, 重置为空账本")
                 self.portfolio = {}
 
     def _save_portfolio(self):
@@ -55,7 +54,7 @@ class PortfolioTracker:
         if code not in self.portfolio:
             return {'shares': 0, 'cost': 0.0, 'held_days': 0}
         pos = self.portfolio[code]
-        # 运行时双重防御
+        # 双重保险
         return {
             'shares': pos.get('shares', 0),
             'cost': pos.get('cost', 0.0),
@@ -75,7 +74,7 @@ class PortfolioTracker:
             }
         
         pos = self.portfolio[code]
-        # 确保字段存在
+        # 运行时防御
         if 'shares' not in pos: pos['shares'] = 0
         if 'cost' not in pos: pos['cost'] = 0.0
         if 'held_days' not in pos: pos['held_days'] = 0
@@ -127,7 +126,7 @@ class PortfolioTracker:
         return []
         
     def confirm_trades(self):
-        # [核心修复] 使用 .get() 避免 KeyError
+        # [V14.12 修复] 使用 .get() 安全访问
         for code, pos in self.portfolio.items():
             if pos.get('shares', 0) > 0:
                 pos['held_days'] = pos.get('held_days', 0) + 1
