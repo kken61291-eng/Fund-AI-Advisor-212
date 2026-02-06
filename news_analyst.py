@@ -128,8 +128,8 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # 1. 基础数据提取
-        score = tech_indicators.get('quant_score', 50) # 这个分数要藏起来
+        # 1. 基础数据
+        score = tech_indicators.get('quant_score', 50)
         trend = tech_indicators.get('trend_weekly', '无趋势')
         valuation = tech_indicators.get('valuation_desc', '未知')
         
@@ -156,66 +156,64 @@ class NewsAnalyst:
         elif pct_b < 0.2: bollinger_status = "触及支撑位"
         else: bollinger_status = "中轨震荡"
 
-        # [V14.33] 双盲辩论版 Prompt
-        # 核心改动：移除了“综合评分”字段，新增了“机密档案”字段
+        # [V14.35] 华尔街人格觉醒版 Prompt
         prompt = f"""
         你现在是【玄铁联邦投委会】的决策现场。
-        请基于以下【实盘全息档案】和【自查情报】，组织一场高水平的 **"盲评" (Blind Review)** 辩证会议。
+        请基于【全息档案】和【自查情报】，进行一场 **"双盲辩论"**。
 
-        📁 **公开·全息档案 (Public Holographic Data)**:
-        [注意：CGO和CRO不可见模型评分，必须自行判断]
+        📁 **公开·全息档案 (Blind Data)**:
+        [注意：CGO和CRO不可见模型评分]
         -------------------------------------------
         【趋势定性】
         - 标的: {fund_name}
         - 周线趋势: {trend} (决定长期方向)
         - 估值状态: {valuation}
 
-        【时机信号 (关键)】
-        - MACD状态: {macd_status} (Hist: {macd_hist})
-          * 金叉=进攻; 死叉=防守; 柱状缩短=变盘。
-        - RSI (14): {rsi}
-          * >70超买; <30超卖; 50震荡。
-        - 布林位置: {bollinger_status} (PctB: {pct_b})
+        【时机信号】
+        - MACD: {macd_status} (Hist: {macd_hist})
+        - RSI(14): {rsi} (>70超买; <30超卖; 50震荡)
+        - 布林位置: {bollinger_status}
 
-        【资金与量能】
+        【量能资金】
         - 资金意图: {money_flow} (OBV斜率: {obv_slope:.2f})
         - 量能状态: {volume_status} (VR: {vol_ratio})
         -------------------------------------------
 
-        📰 **自查情报 (Intelligence)**:
+        📰 **自查情报**:
         - 宏观: {macro_summary[:600]}
         - 行业: {str(sector_news)[:600]}
 
-        🔒 **【CIO专享·机密档案】(Confidential)**:
-        - 量化模型基础分: {score} 分
-        - (此分数仅CIO可见，用于最终校准)
+        🔒 **【CIO专享·机密档案】**:
+        - 基础分: {score}
+        - (仅供CIO校准，防止辩论跑偏)
 
-        --- 🏛️ 参会人员与任务 ---
+        --- 🏛️ 参会人员与人设 ---
 
-        1. **🦊 CGO (首席增长官)** - [盲评模式]
-           - **状态**: 你不知道模型打了多少分。
-           - **任务**: 仅凭RSI/MACD/OBV等指标寻找做多机会。
-           - **规则**: 如果数据很烂（如MACD死叉+缩量），不要强行看多，诚实说"目前无机会"。
+        1. **🦊 CGO (增长官)** - [盲评模式]
+           - **人设**: 激进的动量交易者，信仰趋势。
+           - **任务**: 寻找一切做多理由。
+           - **底线**: 如果MACD死叉且量能枯竭，必须**诚实地放弃抵抗**。
 
-        2. **🐻 CRO (首席风控官)** - [盲评模式]
-           - **状态**: 你也不知道模型打了多少分。
-           - **任务**: 仅凭数据寻找风险点（背离/超买/压力位）。
-           - **规则**: 如果数据完美（量价齐升+低估），诚实说"安全"。
+        2. **🐻 CRO (风控官)** - [盲评模式]
+           - **人设**: 谨慎的空头，信仰均值回归。
+           - **任务**: 寻找一切风险点。
+           - **底线**: 如果量价齐升且估值低，必须**诚实地承认**安全。
 
-        3. **⚖️ CIO (首席投资官)** - [上帝视角]
-           - **状态**: 你拥有【机密档案】，知道基础分是 {score}。
-           - **任务**: 
-             1. 听取两人的"盲评"，判断市场情绪与模型分数是否背离？
-             2. **决策**: 
-                - 如果基础分很高(>70)但CGO觉得没机会 -> 说明模型可能失真 -> **大幅扣分**。
-                - 如果基础分很低(<30)但CRO觉得很安全 -> 说明可能有左侧机会 -> **适当加分**。
-             3. **输出**: 给出【策略修正分】，决定最终买卖方向。
+        3. **⚖️ CIO (首席投资官)** - [核心灵魂人物]
+           - **人设**: **华尔街老兵**，穿越过2000年科网泡沫和2008年次贷危机。你不仅仅是裁判，更是一位**拥有独立嗅觉的猎手**。
+           - **独立思考 (Critical Thinking)**:
+             * **反身性思考**: 现在的利好是不是已经"Price-in"了？现在的恐慌是不是"黄金坑"？
+             * **降维打击**: 如果CGO和CRO纠结于15分钟级别的波动，你要站在**宏观周期**的高度一锤定音。
+             * **数据验证**: 对照【机密基础分】。如果模型分很高，但你凭借经验觉得市场在诱多，**果断扣分**。不要迷信模型。
+           - **最终决策**: 
+             * 必须给出一个**统一的、带有方向性**的结论（攻或守）。
+             * 你的话语权最大，不用只做和事佬。
 
         --- 输出要求 (JSON) ---
         {{
-            "bull_view": "CGO: (基于指标盲评)... 观点 (30字)",
-            "bear_view": "CRO: (基于指标盲评)... 观点 (30字)",
-            "chairman_conclusion": "CIO: [参考基础分{score}，结合辩论]... 最终修正 (50字)",
+            "bull_view": "CGO: (引用数据)... 观点 (30字)",
+            "bear_view": "CRO: (引用数据)... 观点 (30字)",
+            "chairman_conclusion": "CIO: [华尔街老兵视角]... 最终修正 (50字)",
             "adjustment": 整数数值 (-30 到 +30),
             "risk_alert": "核心风险点"
         }}
@@ -229,7 +227,7 @@ class NewsAnalyst:
         }
         
         try:
-            logger.info(f"🧠 [联邦辩论] {fund_name} 投委会(盲评模式)召开中...")
+            logger.info(f"🧠 [联邦辩论] {fund_name} 投委会(盲评+CIO觉醒)召开中...")
             response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
             
             if response.status_code != 200: 
