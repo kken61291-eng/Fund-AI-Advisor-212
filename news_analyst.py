@@ -28,9 +28,6 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=2)
     def fetch_news_titles(self, keywords_str):
-        """
-        [V14.21] 关键词矩阵搜索 (OR Logic + Fallback)
-        """
         if not keywords_str: return []
         
         keys = keywords_str.split()
@@ -89,60 +86,61 @@ class NewsAnalyst:
         elif vol_ratio > 2.0: volume_status = "放量分歧"
         else: volume_status = "温和"
 
-        # [V14.25] 辩证思维 Prompt
+        # [V14.26] 联邦投委会人设增强版 Prompt
         prompt = f"""
-        你现在是【玄铁基金投委会】的决策中枢。请对标的【{fund_name}】进行严谨的辩证分析。
+        你现在是【玄铁联邦投委会】的决策现场。
+        请基于以下【实盘档案】和【自查情报】，组织一场高水平的辩证会议。
 
-        【实盘硬数据】
-        - 评分: {score} (基础技术分)
-        - 估值: {valuation}
-        - 资金: {money_flow} (OBV斜率: {obv_slope:.2f})
-        - 量能: {volume_status} (VR: {vol_ratio})
-        - 趋势: {trend}
+        📁 **实盘档案 (Hard Data)**:
+        - 标的: {fund_name}
+        - 技术评分: {score} (基础分)
+        - 估值状态: {valuation}
+        - 资金流向: {money_flow} (OBV斜率: {obv_slope:.2f})
+        - 量能状态: {volume_status} (VR: {vol_ratio})
+        - 周线趋势: {trend}
 
-        【自检索情报】
-        - 宏观: {macro_summary[:600]}
-        - 行业: {str(sector_news)[:600]}
+        📰 **自查情报 (Intelligence)**:
+        - 宏观背景: {macro_summary[:600]}
+        - 行业动态: {str(sector_news)[:600]}
 
-        请运用【辩证唯物主义】思维，进行以下三方会谈：
+        --- 🏛️ 参会人员与人设 ---
 
-        1. 🦊 CGO (增长官 - 正方): 
-           - 任务: 结合"实盘数据"与"最新利好"，论证上涨的必然性。
-           - 要求: 必须引用具体新闻或数据，拒绝空谈。
+        1. **🦊 CGO (首席增长官)**
+           - **背景**: 华尔街动量交易员，信仰"趋势为王"和"强者恒强"。
+           - **任务**: 挖掘上涨逻辑。但如果【趋势DOWN】或【流动性枯竭】，你必须诚实地承认"风口已过"，不能强行看多。
+           - **行为**: 必须引用具体的【新闻】或【资金数据】来佐证观点。
 
-        2. 🐻 CRO (风控官 - 反方): 
-           - 任务: 寻找逻辑漏洞。如果缩量，指出是"流动性枯竭"而非"惜售"。如果利好，指出是否"利好兑现"。
-           - 要求: 必须客观，不能为了反对而反对（诡辩）。
+        2. **🐻 CRO (首席风控官)**
+           - **背景**: 资深宏观策略师，信仰"均值回归"和"安全边际"。
+           - **任务**: 泼冷水。但如果【量价齐升】且【估值低廉】，你必须承认"安全垫足够"，不能为了反对而反对。
+           - **行为**: 重点审查【背离】和【宏观压制】。
 
-        3. ⚖️ CIO (首席投资官 - 裁判): 
-           - 任务: 提炼两人观点，进行【独立验证】。
-           - 决策逻辑: 
-             * 如果硬数据（如趋势DOWN）与CGO观点冲突，以硬数据为准。
-             * 如果出现"背离"（如缩量上涨），必须扣分。
-           - 最终输出: 
-             * 给出【CIO策略修正分】(范围 -30 到 +30)。
-             * 正分为加仓/看多，负分为减仓/避险。
-             * 结论必须收敛，明确是攻是守。
+        3. **⚖️ CIO (首席投资官/裁判)**
+           - **背景**: 绝对理性的决策机器。
+           - **任务**: 
+             1. 听取两人的辩论，判断谁更符合当下的【实盘数据】。
+             2. **独立验证**: 如果CGO说"量能健康"但VR<0.6，你要无情驳斥。
+             3. **收敛结论**: 给出最终的【策略修正分】(Adjustment)，并在加分/减分的基础上决定攻守方向。
 
-        **输出要求 (JSON)**:
+        --- 输出要求 (JSON) ---
         {{
-            "bull_view": "CGO: 基于[某数据/新闻]... (30字)",
-            "bear_view": "CRO: 警惕[某风险]... (30字)",
-            "chairman_conclusion": "CIO: [收敛结论]... (50字)",
-            "adjustment": 整数数值,
-            "risk_alert": "无" 或 "具体风险点"
+            "bull_view": "CGO: (引用数据/新闻)... 观点 (30字)",
+            "bear_view": "CRO: (引用风险点)... 观点 (30字)",
+            "chairman_conclusion": "CIO: [判决理由]... 最终修正 (50字)",
+            "adjustment": 整数数值 (-30 到 +30),
+            "risk_alert": "核心风险点"
         }}
         """
 
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.3, # 低温确保逻辑严密，不胡说八道
-            "max_tokens": 1000
+            "temperature": 0.4, # 适度创造性，保持逻辑严密
+            "max_tokens": 1200
         }
         
         try:
-            logger.info(f"🧠 [AI思考中] 请求分析 {fund_name}...")
+            logger.info(f"🧠 [联邦辩论] {fund_name} 投委会召开中...")
             response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
             
             if response.status_code != 200: 
@@ -151,8 +149,8 @@ class NewsAnalyst:
                 
             raw_content = response.json()['choices'][0]['message']['content']
             
-            # [V14.25] 打印 AI 原始回复，满足全日志需求
-            logger.info(f"🤖 [AI原始回复 {fund_name}]:\n{raw_content}")
+            # [V14.26] 打印原始辩论记录
+            logger.info(f"📝 [会议纪要 {fund_name}]:\n{raw_content}")
             
             data = json.loads(self._clean_json(raw_content))
             return {
