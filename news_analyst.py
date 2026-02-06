@@ -27,13 +27,19 @@ class NewsAnalyst:
             return s
 
     @retry(retries=2, delay=2)
-    def fetch_news_titles(self, keyword):
-        if not keyword: return []
+    def fetch_news_titles(self, keywords_str):
+        """
+        [V14.21] 关键词矩阵搜索 (OR Logic + Fallback)
+        """
+        if not keywords_str: return []
+        
+        keys = keywords_str.split()
         news_list = []
+        fallback_list = [] 
+        
         try:
             df = ak.stock_news_em(symbol="要闻")
-            keys = keyword.split()
-            junk_words = ["汇总", "集锦", "收评", "早报", "公告"]
+            junk_words = ["汇总", "集锦", "收评", "早报", "公告", "提示"]
             
             for _, row in df.iterrows():
                 title = str(row.get('title', ''))
@@ -41,16 +47,23 @@ class NewsAnalyst:
                 
                 if any(jw in title for jw in junk_words): continue
                 
+                time_str = self._format_short_time(raw_time)
+                item = f"[{time_str}] {title}"
+                
+                if len(fallback_list) < 3:
+                    fallback_list.append(item)
+
                 if any(k in title for k in keys):
-                    time_str = self._format_short_time(raw_time)
-                    news_list.append(f"[{time_str}] {title}")
+                    news_list.append(item)
             
             if not news_list:
-                return [f"近期无'{keyword}'直接资讯，参考宏观。"]
-            return news_list[:8] # [扩容] 从5条增加到8条
+                return [f"[市场背景] {x}" for x in fallback_list]
+            
+            return news_list[:8] 
+            
         except Exception as e:
-            logger.warning(f"行业新闻抓取失败 {keyword}: {e}")
-            return ["数据源暂时不可用"]
+            logger.warning(f"关键词搜索微瑕: {e}")
+            return ["数据源波动，参考宏观面。"]
 
     def _clean_json(self, text):
         try:
@@ -76,41 +89,72 @@ class NewsAnalyst:
         elif vol_ratio > 2.0: volume_status = "放量分歧"
         else: volume_status = "温和"
 
-        # [扩容] macro_summary[:800] 确保读取所有宏观新闻
+        # [V14.25] 辩证思维 Prompt
         prompt = f"""
-        你现在是【玄铁基金投委会】的会议记录员。对标的【{fund_name}】进行投资辩论。
+        你现在是【玄铁基金投委会】的决策中枢。请对标的【{fund_name}】进行严谨的辩证分析。
 
-        【硬数据】[评分:{score}] [估值:{valuation}] [资金:{money_flow}] [量能:{volume_status}] [趋势:{trend}]
-        【宏观环境】{macro_summary[:800]} 
-        【行业情报】{str(sector_news)[:800]}
+        【实盘硬数据】
+        - 评分: {score} (基础技术分)
+        - 估值: {valuation}
+        - 资金: {money_flow} (OBV斜率: {obv_slope:.2f})
+        - 量能: {volume_status} (VR: {vol_ratio})
+        - 趋势: {trend}
 
-        请模拟以下三位委员的专业发言 (华尔街风格，拒绝废话)：
+        【自检索情报】
+        - 宏观: {macro_summary[:600]}
+        - 行业: {str(sector_news)[:600]}
 
-        1. 🦊 CGO (增长官): 动量交易者。信仰"强者恒强"，寻找上涨催化剂。
-        2. 🐻 CRO (风控官): 怀疑论者。信仰"均值回归"，警惕所有背离和泡沫。
-        3. ⚖️ 主席 (决策者): 绝对理性。基于【硬数据】和【赔率】做最终裁决。
+        请运用【辩证唯物主义】思维，进行以下三方会谈：
+
+        1. 🦊 CGO (增长官 - 正方): 
+           - 任务: 结合"实盘数据"与"最新利好"，论证上涨的必然性。
+           - 要求: 必须引用具体新闻或数据，拒绝空谈。
+
+        2. 🐻 CRO (风控官 - 反方): 
+           - 任务: 寻找逻辑漏洞。如果缩量，指出是"流动性枯竭"而非"惜售"。如果利好，指出是否"利好兑现"。
+           - 要求: 必须客观，不能为了反对而反对（诡辩）。
+
+        3. ⚖️ CIO (首席投资官 - 裁判): 
+           - 任务: 提炼两人观点，进行【独立验证】。
+           - 决策逻辑: 
+             * 如果硬数据（如趋势DOWN）与CGO观点冲突，以硬数据为准。
+             * 如果出现"背离"（如缩量上涨），必须扣分。
+           - 最终输出: 
+             * 给出【CIO策略修正分】(范围 -30 到 +30)。
+             * 正分为加仓/看多，负分为减仓/避险。
+             * 结论必须收敛，明确是攻是守。
 
         **输出要求 (JSON)**:
         {{
-            "bull_view": "CGO: 简练的看多逻辑 (30字内)",
-            "bear_view": "CRO: 简练的风险警示 (30字内)",
-            "chairman_conclusion": "主席: 最终裁决及理由 (50字内)",
+            "bull_view": "CGO: 基于[某数据/新闻]... (30字)",
+            "bear_view": "CRO: 警惕[某风险]... (30字)",
+            "chairman_conclusion": "CIO: [收敛结论]... (50字)",
             "adjustment": 整数数值,
-            "risk_alert": "无" 或 "风险点"
+            "risk_alert": "无" 或 "具体风险点"
         }}
         """
 
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.3, # [微调] 降低温度，提高稳定性
+            "temperature": 0.3, # 低温确保逻辑严密，不胡说八道
             "max_tokens": 1000
         }
         
         try:
+            logger.info(f"🧠 [AI思考中] 请求分析 {fund_name}...")
             response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
-            if response.status_code != 200: return self._fallback_result(sector_news)
-            data = json.loads(self._clean_json(response.json()['choices'][0]['message']['content']))
+            
+            if response.status_code != 200: 
+                logger.error(f"API Error: {response.text}")
+                return self._fallback_result(sector_news)
+                
+            raw_content = response.json()['choices'][0]['message']['content']
+            
+            # [V14.25] 打印 AI 原始回复，满足全日志需求
+            logger.info(f"🤖 [AI原始回复 {fund_name}]:\n{raw_content}")
+            
+            data = json.loads(self._clean_json(raw_content))
             return {
                 "bull_say": data.get("bull_view", "..."),
                 "bear_say": data.get("bear_view", "..."),
@@ -126,69 +170,44 @@ class NewsAnalyst:
     def _fallback_result(self, news):
         return {"bull_say": "数据缺失", "bear_say": "风险未知", "comment": "连接中断", "adjustment": 0, "risk_alert": "API Error", "used_news": news}
 
-    # --- 2. CIO 战略审计 ---
+    # --- CIO 战略审计 ---
     @retry(retries=2, delay=2)
     def review_report(self, report_text):
         prompt = f"""
-        你是【玄铁量化】的 **CIO (首席投资官)**。你以**严厉、风控至上**著称。
-        请对以下决策汇总进行【战略审计】，输出 HTML 简报 (不要 Markdown)：
-
+        你是【玄铁量化】的 **CIO**。
+        请对以下汇总进行【战略审计】，输出 HTML。
+        
         【汇总】{report_text}
-
-        内容要求：
-        1. **宏观定调**: 明确当前周期（衰退/复苏/过热/滞涨）及核心矛盾。
-        2. **双轨审计**: 
-           - 底仓(红利/300): 是否稳健？
-           - 卫星仓(科技/周期): 是否冒进？
-        3. **最终指令**: 给出总仓位建议(0-100%)。
 
         输出模板：
         <div class="cio-section">
-            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px; color: #e0e0e0;">宏观定调</h3>
+            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">宏观定调</h3>
             <p>...</p>
-            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px; color: #e0e0e0;">双轨审计</h3>
+            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">双轨审计</h3>
             <p>...</p>
-            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px; color: #e0e0e0;">CIO指令</h3>
+            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">CIO指令</h3>
             <p>...</p>
         </div>
         """
         return self._call_llm_text(prompt, "CIO 战略审计")
 
-    # --- 3. 玄铁先生复盘 ---
+    # --- 玄铁先生复盘 ---
     @retry(retries=2, delay=2)
     def advisor_review(self, report_text, macro_str):
         prompt = f"""
-        你是 **【玄铁先生】**。
-        你是一位 **冷峻的市场哲学家** 和 **量化交易宗师**。
-        你摒弃了所有花哨的预测，只相信 **"价格包容一切"** 和 **"群体心理博弈"**。
-        你的语言风格：**深刻、冷静、直击本质**。不要使用"江湖"、"武侠"、"剑气"等词汇。用金融哲学和数学逻辑说话。
+        你是 **【玄铁先生】**，一位冷峻的市场哲学家。
+        请写一段【场外实战复盘】 (HTML)。
 
         【宏观】{macro_str[:1500]} 
         【决议】{report_text}
 
-        请撰写【场外实战复盘】 (HTML格式)：
-
-        1. **【势·验证】 (The Trend)**: 
-           - 分析当下的市场阻力最小方向。
-           - 此时是"贪婪"的好时机，还是"恐惧"的好时机？
-           - 结合量能，判定主力是在吸筹还是派发。
-
-        2. **【术·底仓】 (The Shield)**: 
-           - 点评防御性资产。强调"活下来"比"赚得多"更重要。
-           - 引用"反脆弱"或"安全边际"的概念。
-
-        3. **【断·进攻】 (The Strike)**: 
-           - 点评进攻性资产。
-           - 强调"胜率"与"赔率"。如果没有非对称的收益机会，宁可不动。
-
-        输出模板：
+        请透过现象看本质。输出：
         <div class="advisor-section">
-            <h4 style="color: #ffb74d;">【势·验证】</h4><p>...</p>
-            <h4 style="color: #ffb74d;">【术·底仓】</h4><p>...</p>
-            <h4 style="color: #ffb74d;">【断·进攻】</h4><p>...</p>
+            <h4 style="color: #ffd700;">【势·验证】</h4><p>...</p>
+            <h4 style="color: #ffd700;">【术·底仓】</h4><p>...</p>
+            <h4 style="color: #ffd700;">【断·进攻】</h4><p>...</p>
         </div>
         """
-        # [扩容] 玄铁先生需要看更多宏观数据，限制放宽到 1500
         return self._call_llm_text(prompt, "玄铁先生复盘")
 
     def _call_llm_text(self, prompt, task_name):
