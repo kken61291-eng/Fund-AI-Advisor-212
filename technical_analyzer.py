@@ -14,15 +14,32 @@ class TechnicalAnalyzer:
         pass
 
     @staticmethod
+    def _get_safe_default_indicators(error_msg="数据不足或计算错误"):
+        """
+        [V15.6 修复] 返回一个默认的安全字典，防止 main.py 崩溃
+        默认状态：0分 + VETO (一票否决)
+        """
+        return {
+            'rsi': 50,
+            'macd': {'line': 0, 'signal': 0, 'hist': 0, 'trend': '未知'},
+            'risk_factors': {'bollinger_pct_b': 0.5, 'vol_ratio': 1.0, 'divergence': '无'},
+            'flow': {'obv_slope': 0},
+            'trend_weekly': 'Unknown',
+            'price': 0,
+            'quant_score': 0,
+            'final_score': 0,
+            'tech_cro_signal': 'VETO',  # 默认拦截
+            'tech_cro_comment': f"系统风控: {error_msg}"
+        }
+
+    @staticmethod
     def _calculate_trade_minutes(current_time):
         """
         [数学核心] 计算A股当日已交易分钟数 (全天240分钟)
         剔除午休 11:30 - 13:00
         """
-        # 转为分钟数方便计算
         t_min = current_time.hour * 60 + current_time.minute
         
-        # 关键时间点 (分钟数)
         t_open_am = 9 * 60 + 30   # 09:30 (570)
         t_close_am = 11 * 60 + 30 # 11:30 (690)
         t_open_pm = 13 * 60       # 13:00 (780)
@@ -41,8 +58,9 @@ class TechnicalAnalyzer:
 
     @staticmethod
     def calculate_indicators(df):
+        # 基础数据检查
         if df is None or df.empty or len(df) < 30:
-            return {}
+            return TechnicalAnalyzer._get_safe_default_indicators("K线数据不足(<30)")
 
         # --- [V14.28 逻辑保留] 全时段动态成交量投影 ---
         try:
@@ -56,8 +74,6 @@ class TechnicalAnalyzer:
                 
                 if trade_mins > 15:
                     original_vol = df.iloc[-1]['volume']
-                    
-                    # 动态乘数 = 全天240分钟 / 已交易分钟
                     multiplier = 240 / trade_mins
                     
                     # 保守修正系数
@@ -83,13 +99,11 @@ class TechnicalAnalyzer:
         indicators = {}
         
         try:
-            # 数据清洗，处理空值
+            # 数据清洗
             df = df.ffill().bfill()
             close = df['close']
             volume = df['volume']
             current_price = close.iloc[-1]
-            
-            # [V14.29] 切换使用 'ta' 库计算指标
             
             # 1. RSI (相对强弱)
             rsi_ind = RSIIndicator(close=close, window=14)
@@ -135,7 +149,6 @@ class TechnicalAnalyzer:
             # 5. OBV 能量潮
             obv_ind = OnBalanceVolumeIndicator(close=close, volume=volume)
             obv = obv_ind.on_balance_volume()
-            # 计算 OBV 近 10 日斜率
             try:
                 obv_slope = (obv.iloc[-1] - obv.iloc[-10]) / 10
             except:
@@ -169,21 +182,32 @@ class TechnicalAnalyzer:
             
             indicators['quant_score'] = max(0, min(100, score))
             
-            # 8. CRO 信号生成
+            # 8. CRO 信号生成 [V15.6 修复: 优先级逻辑]
+            # 优先级: VETO (3) > WARN (1) > PASS (0)
+            current_risk_level = 0
             cro_signal = "PASS"
             cro_reason = "技术指标正常"
             
+            # 规则 A: 周线趋势 (权重 1 - 警告)
             if trend_status == "DOWN":
-                cro_signal = "WARN"
-                cro_reason = "周线趋势向下"
+                if current_risk_level < 1:
+                    current_risk_level = 1
+                    cro_signal = "WARN"
+                    cro_reason = "周线趋势向下"
             
+            # 规则 B: 流动性枯竭 (权重 3 - 否决)
             if vol_ratio < 0.6: 
-                cro_signal = "VETO"
-                cro_reason = f"流动性枯竭(预测VR {vol_ratio}<0.6)"
+                if current_risk_level < 3:
+                    current_risk_level = 3
+                    cro_signal = "VETO"
+                    cro_reason = f"流动性枯竭(VR {vol_ratio}<0.6)"
             
+            # 规则 C: RSI 极度超买 (权重 3 - 否决)
             if indicators['rsi'] > 85:
-                cro_signal = "VETO"
-                cro_reason = "RSI极度超买"
+                if current_risk_level < 3:
+                    current_risk_level = 3
+                    cro_signal = "VETO"
+                    cro_reason = f"RSI极度超买({indicators['rsi']})"
 
             indicators['tech_cro_signal'] = cro_signal
             indicators['tech_cro_comment'] = cro_reason
@@ -192,4 +216,4 @@ class TechnicalAnalyzer:
 
         except Exception as e:
             logger.error(f"指标计算失败: {e}")
-            return {}
+            return TechnicalAnalyzer._get_safe_default_indicators(f"计算异常: {str(e)[:20]}")
