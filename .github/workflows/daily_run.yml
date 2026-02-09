@@ -1,12 +1,13 @@
-name: Daily AI Fund Advisor
+name: Daily AI Fund Advisor (Analysis)
 
 on:
   schedule:
-    - cron: '20 5 * * 1-5' # 北京时间 13:30
+    # 北京时间 14:00 (UTC 06:00) 执行分析
+    - cron: '0 6 * * 1-5'
   workflow_dispatch:
 
 concurrency: 
-  group: ${{ github.workflow }}
+  group: ai-analysis
   cancel-in-progress: true
 
 jobs:
@@ -23,26 +24,28 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
-        # --- [提速核心 1] 开启 PIP 缓存 ---
-        cache: 'pip' 
-        # -------------------------------
+        cache: 'pip'
 
     - name: Install dependencies
-      # --- [提速核心 2] 仅在缓存未命中时深度安装 ---
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run Analysis
+    - name: 🧠 Run Analysis System
       env:
+        # --- 核心修改：变量映射 ---
+        # 左边是 Python 代码(utils.py)里要求的名字
+        # 右边是你 GitHub 仓库(截图)里的 Secret 名字
+        EMAIL_USER: ${{ secrets.MAIL_USER }}
+        EMAIL_PASS: ${{ secrets.MAIL_PASS }}
+        EMAIL_TO: ${{ secrets.MAIL_USER }}   # 发给自己
+        
+        # 其他变量
         LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
-        MAIL_USER: ${{ secrets.MAIL_USER }}
-        MAIL_PASS: ${{ secrets.MAIL_PASS }}
-        TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
-        LLM_MODEL: "Pro/moonshotai/Kimi-K2.5"
-      
+        
       run: |
+        # 运行主程序，读取本地数据进行分析
         python main.py
 
     - name: Commit and Push Portfolio
@@ -53,7 +56,6 @@ jobs:
         if [[ -n $(git status --porcelain portfolio.json) ]]; then
           git add portfolio.json
           git commit -m "📈 Auto-update portfolio ledger [skip ci]"
-          # 拉取最新代码防止冲突
           git pull --rebase origin main
           git push
         else
