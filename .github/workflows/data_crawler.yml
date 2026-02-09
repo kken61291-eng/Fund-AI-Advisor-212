@@ -1,17 +1,18 @@
-name: Daily AI Fund Advisor (Analysis)
+name: Data Crawler (Batch Updater)
 
 on:
   schedule:
-    # 北京时间 14:00 (UTC 06:00)
-    - cron: '0 6 * * 1-5'
-  workflow_dispatch:
+    # UTC时间 1:30 - 7:30，对应北京时间 09:30 - 15:30
+    # 每小时的第30分钟执行一次，负责搬运数据
+    - cron: '30 1-7 * * 1-5'
+  workflow_dispatch: # 允许手动点击按钮触发
 
 concurrency: 
-  group: ai-analysis
-  cancel-in-progress: true
+  group: data-crawler
+  cancel-in-progress: false
 
 jobs:
-  analyze_and_report:
+  update_data:
     runs-on: ubuntu-latest
     env:
       TZ: Asia/Shanghai
@@ -31,33 +32,36 @@ jobs:
         pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: 🧠 Run Analysis System
+    # --- 任务 1: 抓取行情数据 (耗时较长，有休眠) ---
+    - name: 🕷️ Run Market Data Crawler
       env:
-        # 分析任务需要全套密钥
-        LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-        LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
-        EMAIL_USER: ${{ secrets.MAIL_USER }}  # 注意与代码环境变量名匹配
-        EMAIL_PASS: ${{ secrets.MAIL_PASS }}
-        EMAIL_TO: ${{ secrets.MAIL_USER }}    # 发给自己
-        
+        TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       run: |
-        # 此时运行 main.py，它会自动读取 data_crawler 提交的 csv 文件
-        # 不会发起网络请求，速度极快
-        python main.py
+        python batch_updater.py
 
-    - name: Commit and Push Portfolio
+    # --- 任务 2: 抓取新闻数据 (速度较快) ---
+    - name: 📡 Run News Crawler
+      run: |
+        python news_loader.py
+
+    # --- 提交所有数据 ---
+    - name: Commit and Push Data Cache
       run: |
         git config --global user.name "GitHub Action"
         git config --global user.email "action@github.com"
         
-        # 只提交记账本的变化
-        if [[ -n $(git status --porcelain portfolio.json) ]]; then
-          git add portfolio.json
-          git commit -m "📈 Auto-update portfolio ledger [skip ci]"
+        # 检查 data_cache (行情) 或 data_news (新闻) 是否有变化
+        if [[ -n $(git status --porcelain data_cache/ data_news/) ]]; then
           
-          # [关键] 必须rebase，因为爬虫任务可能刚刚提交了数据
+          # [关键] 同时添加两个目录
+          git add data_cache/*.csv
+          git add data_news/*.jsonl
+          
+          git commit -m "💾 Auto-save market & news data [skip ci]"
+          
+          # 拉取最新代码防止冲突 (Rebase 模式)
           git pull --rebase origin main
           git push
         else
-          echo "No changes in portfolio."
+          echo "No new data fetched."
         fi
