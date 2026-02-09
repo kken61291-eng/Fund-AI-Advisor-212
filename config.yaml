@@ -1,15 +1,16 @@
 global:
-  base_invest_amount: 1000   # 单次基准买入金额
+  base_invest_amount: 1000   # 单次基准定投金额
   max_daily_invest: 5000     # 单日最大投入上限
 
 funds:
-  # --- 👑 核心宽基 (周期基准) ---
+  # --- 👑 核心宽基 (压舱石) ---
   - name: "沪深300ETF"
     code: "510300"
     index_name: "沪深300"
-    sector_keyword: "A股 核心资产 茅指数 经济复苏"
+    # [关键词升级] 恢复: 外资, 茅台, 核心资产
+    sector_keyword: "A股 核心资产 蓝筹 白马股 北向资金 茅台 宁德时代"
 
-  - name: "科创50ETF"  # [新增] A股最锋利的矛
+  - name: "科创50ETF"
     code: "588000"
     index_name: "科创50"
     sector_keyword: "科创板 硬科技 专精特新 半导体"
@@ -23,41 +24,58 @@ funds:
   - name: "半导体ETF"
     code: "512480"
     index_name: "半导体"
-    sector_keyword: "半导体 芯片 集成电路 存储"
+    # [关键词升级] 恢复: 大基金, 华为, 光刻机
+    sector_keyword: "半导体 芯片 集成电路 华为 海思 大基金 光刻机 存储"
 
   - name: "纳指科技ETF"
     code: "159509"
     index_name: "纳斯达克"
-    sector_keyword: "美股 纳斯达克 科技股 英伟达 AI"
+    sector_keyword: "美股 纳斯达克 科技股 英伟达 AI OpenAI"
 
   - name: "恒生科技ETF"
     code: "513130"
     index_name: "恒生科技"
-    sector_keyword: "港股 腾讯 阿里 美团 互联网"
+    sector_keyword: "港股 腾讯 阿里 美团 互联网 平台经济"
 
-  - name: "游戏ETF"     # [新增] AI应用落地最快方向
+  # [传媒] 与 [游戏] 虽然相关，但侧重不同(Sora vs 娱乐)，均保留以增加AI应用捕捉面
+  - name: "传媒ETF"
+    code: "512980"
+    index_name: "中证传媒"
+    # [关键词升级] 恢复: Sora, AIGC
+    sector_keyword: "传媒 游戏 AI应用 短剧 电影 字节跳动 OpenAI Sora"
+
+  - name: "游戏ETF"
     code: "159869"
     index_name: "游戏动漫"
-    sector_keyword: "游戏 传媒 短剧 AI应用"
+    sector_keyword: "游戏 电竞 游戏版号 虚拟现实"
 
-  # --- 🛡️ 防守与避险 (绝对收益底仓) ---
+  # --- 🛡️ 周期与防守 (绝对收益) ---
   - name: "红利ETF"
     code: "510880"
-    index_name: "红利指数"
-    sector_keyword: "红利 高股息 煤炭 银行 国企改革"
+    index_name: "中证红利"
+    # [关键词升级] 恢复: 市值管理, 央企考核
+    sector_keyword: "高股息 央企 红利 市值管理 分红 煤炭 银行"
 
-  - name: "黄金ETF"     # [新增] 只有它能对抗信用周期下行
+  - name: "煤炭ETF"  # [找回] 强周期/高股息代表
+    code: "515220"
+    index_name: "中证煤炭"
+    # [关键词升级] 恢复: 电力, 寒潮
+    sector_keyword: "煤炭 能源 期货 动力煤 焦煤 寒潮 电力"
+
+  - name: "黄金ETF"
     code: "518880"
     index_name: "黄金"
-    sector_keyword: "黄金 贵金属 避险 美联储降息"
+    # [关键词升级] 恢复: 央行购金, 通胀
+    sector_keyword: "黄金 金价 美联储 避险 央行购金 通胀 地缘"
 
   # --- 🦅 困境反转 (左侧博弈) ---
-  - name: "证券ETF"     # [新增] 牛市旗手，大周期的启动器
+  - name: "证券ETF"
     code: "512880"
-    index_name: "证券公司"
-    sector_keyword: "券商 证券 牛市旗手 资本市场"
+    index_name: "全指证券公司"
+    # [关键词升级] 恢复: 降费, 并购重组
+    sector_keyword: "证券 券商 牛市旗手 印花税 降费 并购重组"
 
-  - name: "医疗ETF"     # [新增] 极度超跌，等待估值回归
+  - name: "医疗ETF"
     code: "512170"
     index_name: "中证医疗"
-    sector_keyword: "医疗 医药 CXO 创新药 医保"
+    sector_keyword: "医疗 医药 CXO 创新药 医保 葛兰"
