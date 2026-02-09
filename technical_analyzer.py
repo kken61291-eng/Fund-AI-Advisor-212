@@ -16,7 +16,7 @@ class TechnicalAnalyzer:
     @staticmethod
     def _get_safe_default_indicators(error_msg="数据不足或计算错误"):
         """
-        [V15.6 修复] 返回一个默认的安全字典，防止 main.py 崩溃
+        [V15.7 修复] 返回一个默认的安全字典，防止 main.py 崩溃
         默认状态：0分 + VETO (一票否决)
         """
         return {
