@@ -62,23 +62,28 @@ class TechnicalAnalyzer:
         if df is None or df.empty or len(df) < 30:
             return TechnicalAnalyzer._get_safe_default_indicators("K线数据不足(<30)")
 
-        # [关键修复 1] 列名清洗：转小写，去空格
-        df.columns = [c.lower().strip() for c in df.columns]
-        
-        # [关键修复 2] 兼容 'amount' 和 'volume'
-        # 有些源（如腾讯）可能返回 'amount' (成交额) 而不是 'volume' (成交量)，或者列名不同
-        if 'volume' not in df.columns and 'amount' in df.columns:
-            df.rename(columns={'amount': 'volume'}, inplace=True)
-        
-        # 再次检查关键列是否存在
-        required_cols = ['close', 'volume', 'high', 'low', 'open']
-        missing = [col for col in required_cols if col not in df.columns]
-        if missing:
-             # logger.error(f"❌ 数据缺少关键列: {missing} | 现有列: {list(df.columns)}")
-             return TechnicalAnalyzer._get_safe_default_indicators(f"缺少关键列:{missing}")
-
-        # --- [V14.28 逻辑保留] 全时段动态成交量投影 ---
         try:
+            # [关键修复 1] 列名清洗：转小写，去空格
+            df.columns = [c.lower().strip() for c in df.columns]
+            
+            # [关键修复 2] 兼容 'amount' 和 'volume'
+            # 如果没有 volume 但有 amount，临时用 amount 代替 volume 进行趋势计算
+            if 'volume' not in df.columns and 'amount' in df.columns:
+                df.rename(columns={'amount': 'volume'}, inplace=True)
+            
+            # [关键修复 3] 强制类型转换，防止字符串导致的计算错误
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # 再次检查关键列是否存在
+            required_cols = ['close', 'volume', 'high', 'low', 'open']
+            missing = [col for col in required_cols if col not in df.columns]
+            if missing:
+                 logger.error(f"❌ 数据缺少关键列: {missing} | 现有列: {list(df.columns)}")
+                 return TechnicalAnalyzer._get_safe_default_indicators(f"缺少关键列:{missing}")
+
+            # --- [V14.28 逻辑保留] 全时段动态成交量投影 ---
             last_date = df.index[-1]
             now_bj = get_beijing_time()
             
@@ -99,21 +104,19 @@ class TechnicalAnalyzer:
                     
                     projected_vol = original_vol * multiplier
                     
-                    # 修改数据 [修复类型警告]
+                    # 修改数据 [使用 .copy() 避免警告]
+                    # 注意：如果此时是 amount 代替的 volume，预测的也是全天成交额，逻辑依然成立
                     vol_idx = df.columns.get_loc('volume')
                     df.iloc[-1, vol_idx] = float(projected_vol) 
                     
                     logger.info(f"⚖️ [动态量能投影] 交易{trade_mins}min | 乘数x{multiplier:.2f} | Vol预测: {int(original_vol)} -> {int(projected_vol)}")
                 else:
                     logger.info("⏳ [动态量能投影] 开盘时间不足15分钟，跳过预测。")
-                    
-        except Exception as e:
-            logger.warning(f"量能投影计算微瑕: {e}")
-        # ---------------------------------------
+                        
+            # ---------------------------------------
 
-        indicators = {}
-        
-        try:
+            indicators = {}
+            
             # 数据清洗
             df = df.ffill().bfill()
             close = df['close']
