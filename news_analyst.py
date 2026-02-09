@@ -12,10 +12,10 @@ class NewsAnalyst:
         
         # [V15.6 模型分层]
         # 战术执行 (快思考): V3.2 Pro - 负责 CGO/CRO/CIO 实时信号
-        self.model_tactical = "Pro/deepseek-ai/DeepSeek-V3.2"     
+        self.model_tactical = "Pro/deepseek-ai/DeepSeek-V3.2"      
         
         # 战略推理 (慢思考): R1 Pro - 负责 宏观策略/复盘审计
-        self.model_strategic = "Pro/deepseek-ai/DeepSeek-R1" 
+        self.model_strategic = "Pro/deepseek-ai/DeepSeek-R1"  
 
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -97,6 +97,10 @@ class NewsAnalyst:
             match = re.search(r'\{.*\}', text, re.DOTALL)
             return match.group(0) if match else "{}"
         except: return "{}"
+    
+    def _clean_html(self, text):
+        text = text.replace("```html", "").replace("```", "").strip()
+        return text
 
     @retry(retries=1, delay=2)
     def analyze_fund_v5(self, fund_name, tech, macro, news, risk):
@@ -304,7 +308,3 @@ class NewsAnalyst:
             return self._clean_html(clean_content)
         except:
             return "<p>首席策略师正在闭关推演...</p>"
-            
-    def _clean_html(self, text):
-        text = text.replace("```html", "").replace("```", "").strip()
-        return text
