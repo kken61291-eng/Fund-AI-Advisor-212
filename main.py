@@ -12,8 +12,8 @@ from valuation_engine import ValuationEngine
 from portfolio_tracker import PortfolioTracker
 from utils import send_email, logger
 
-# --- Global Configuration ---
-DEBUG_MODE = True  # [Modified] Set to True to enable verbose logging & force AI analysis
+# --- 全局配置 ---
+DEBUG_MODE = True  # [修改] 开启调试模式，强制所有基金进行AI分析，并打印详细日志
 tracker_lock = threading.Lock()
 
 def load_config():
@@ -21,21 +21,21 @@ def load_config():
         with open('config.yaml', 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
     except Exception as e:
-        logger.error(f"Failed to read config: {e}")
+        logger.error(f"配置文件读取失败: {e}")
         return {"funds": [], "global": {"base_invest_amount": 1000, "max_daily_invest": 5000}}
 
-# [Core Logic - CIO Strategy]
+# [核心决策逻辑 - CIO 策略]
 def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily, pos, strategy_type, fund_name):
     base_score = tech.get('quant_score', 50)
     
-    # [Debug] Log base score calculation details
+    # [调试] 打印基础分计算细节
     if DEBUG_MODE:
-        logger.info(f"🔍 [DEBUG] {fund_name} Base Score Details: {tech.get('quant_reasons', [])}")
+        logger.info(f"🔍 [DEBUG] {fund_name} 基础分细节: {tech.get('quant_reasons', [])}")
 
     tactical_score = max(0, min(100, base_score + ai_adj))
     
-    action_str = "Bullish Boost" if ai_adj > 0 else ("Bearish Cut" if ai_adj < 0 else "Neutral")
-    logger.info(f"🧮 [Score {fund_name}] Tech({base_score}) + CIO({ai_adj:+d} {action_str}) = Final({tactical_score})")
+    action_str = "加分进攻" if ai_adj > 0 else ("减分防御" if ai_adj < 0 else "中性维持")
+    logger.info(f"🧮 [算分 {fund_name}] 技术面({base_score}) + CIO修正({ai_adj:+d} {action_str}) = 最终分({tactical_score})")
     
     tech['final_score'] = tactical_score
     tech['ai_adjustment'] = ai_adj
@@ -46,61 +46,53 @@ def calculate_position_v13(tech, ai_adj, val_mult, val_desc, base_amt, max_daily
     tactical_mult = 0
     reasons = []
 
-    if tactical_score >= 85: tactical_mult = 2.0; reasons.append("Tactical:StrongBuy")
-    elif tactical_score >= 70: tactical_mult = 1.0; reasons.append("Tactical:Buy")
-    elif tactical_score >= 60: tactical_mult = 0.5; reasons.append("Tactical:Accumulate")
-    elif tactical_score <= 25: tactical_mult = -1.0; reasons.append("Tactical:Breakdown")
+    if tactical_score >= 85: tactical_mult = 2.0; reasons.append("战术:极强")
+    elif tactical_score >= 70: tactical_mult = 1.0; reasons.append("战术:走强")
+    elif tactical_score >= 60: tactical_mult = 0.5; reasons.append("战术:企稳")
+    elif tactical_score <= 25: tactical_mult = -1.0; reasons.append("战术:破位")
 
     final_mult = tactical_mult
     
-    # Valuation Correction
+    # 估值修正
     if tactical_mult > 0:
-        if val_mult < 0.5: final_mult = 0; reasons.append(f"Strat:Overvalued_Stop")
-        elif val_mult > 1.0: final_mult *= val_mult; reasons.append(f"Strat:Undervalued_Boost")
+        if val_mult < 0.5: final_mult = 0; reasons.append(f"战略:高估刹车")
+        elif val_mult > 1.0: final_mult *= val_mult; reasons.append(f"战略:低估加倍")
     elif tactical_mult < 0:
-        if val_mult > 1.2: final_mult = 0; reasons.append(f"Strat:Bottom_Lock")
-        elif val_mult < 0.8: final_mult *= 1.5; reasons.append("Strat:Overvalued_Cut")
+        if val_mult > 1.2: final_mult = 0; reasons.append(f"战略:底部锁仓")
+        elif val_mult < 0.8: final_mult *= 1.5; reasons.append("战略:高估止损")
     else:
         if val_mult >= 1.5 and strategy_type in ['core', 'dividend']:
-            final_mult = 0.5; reasons.append(f"Strat:Left_Side_DCA")
+            final_mult = 0.5; reasons.append(f"战略:左侧定投")
 
-    # Hard Risk Control
+    # 硬风控
     if cro_signal == "VETO":
         if final_mult > 0:
             final_mult = 0
-            reasons.append(f"🛡️Risk:Veto_Buy")
-            logger.info(f"🚫 [Risk Veto {fund_name}] Trigger: {tech.get('tech_cro_comment')}")
+            reasons.append(f"🛡️风控:否决买入")
+            logger.info(f"🚫 [风控拦截 {fund_name}] 触发: {tech.get('tech_cro_comment')}")
     
-    # Lock Period
+    # 锁仓规则
     held_days = pos.get('held_days', 999)
     if final_mult < 0 and pos['shares'] > 0 and held_days < 7:
-        final_mult = 0; reasons.append(f"Rule:Lock({held_days}d)")
+        final_mult = 0; reasons.append(f"规则:锁仓({held_days}天)")
 
-    final_amt = 0; is_sell = False; sell_val = 0; label = "Wait"
+    final_amt = 0; is_sell = False; sell_val = 0; label = "观望"
 
     if final_mult > 0:
         amt = int(base_amt * final_mult)
         final_amt = max(0, min(amt, int(max_daily)))
-        label = "Buy"
+        label = "买入"
     elif final_mult < 0:
         is_sell = True
         sell_ratio = min(abs(final_mult), 1.0)
         sell_val = pos['shares'] * tech.get('price', 0) * sell_ratio
-        label = "Sell"
+        label = "卖出"
 
     if reasons: tech['quant_reasons'] = reasons
     return final_amt, label, is_sell, sell_val
 
-# [UI Rendering - Kept mostly same but ensures data exists]
+# [UI 渲染 - 保持原样，未做精简]
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
-    # ... (Keep existing UI code, just ensure strings are UTF-8 safe)
-    # For brevity, I am not repeating the huge HTML string unless you need it changed.
-    # The fix logic is in the processing loop below.
-    # ... 
-    # (Returning the exact same HTML generation code as previous version to save space)
-    # Ensure to include the `render_html_report_v13` function from your previous `main.py` here.
-    
-    # Placeholder for the function body provided in previous steps
     news_html = ""
     seen_titles = set()
     unique_news = []
@@ -319,12 +311,12 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
         ai_adj = 0; ai_res = {}
         keyword = fund.get('sector_keyword', fund['name']) 
         
-        # [V15.6 Logic] Force AI analysis if DEBUG_MODE is True
+        # [V15.6 修改] 强制AI分析逻辑：持仓 > 0 或 分数极端 或 DEBUG模式开启
         should_run_ai = (
             pos['shares'] > 0 
             or tech['quant_score'] >= 60 
             or tech['quant_score'] <= 35 
-            or DEBUG_MODE  # [Modified] Force run in debug mode
+            or DEBUG_MODE  # [核心修复] 在调试模式下强制运行，确保有投委会输出
         )
 
         if analyst and should_run_ai:
@@ -346,8 +338,8 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
                 ai_adj = ai_res.get('adjustment', 0)
             except Exception as ai_e:
                 logger.error(f"❌ AI Analysis Failed for {fund['name']}: {ai_e}")
-                # Fallback to prevent crash, but log error
-                ai_res = {"bull_say": "System Error", "bear_say": "Check Logs", "comment": "AI Offline", "adjustment": 0}
+                # 兜底返回，防止 crashes
+                ai_res = {"bull_say": "系统故障", "bear_say": "请检查日志", "comment": "AI服务离线", "adjustment": 0}
             
             for n_str in sector_news_list:
                 if "]" in n_str:
@@ -383,7 +375,7 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
         }
     except Exception as e:
         logger.error(f"Process Error {fund['name']}: {e}")
-        if DEBUG_MODE: logger.exception(e) # Print full stack trace in debug
+        if DEBUG_MODE: logger.exception(e) # 调试模式打印完整堆栈
         return None, "", []
     return res, cio_log, used_news
 
@@ -408,7 +400,7 @@ def main():
 
     results = []; cio_lines = [f"【宏观环境】: {macro_str}\n"]
     
-    # Increase workers to 5 for speed, relying on V3.2 concurrency
+    # 保持高并发
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_fund = {executor.submit(
             process_single_fund, 
