@@ -62,14 +62,20 @@ class TechnicalAnalyzer:
         if df is None or df.empty or len(df) < 30:
             return TechnicalAnalyzer._get_safe_default_indicators("K线数据不足(<30)")
 
-        # [关键修复] 确保列名全小写，防止 'Volume' vs 'volume' 错误
-        df.columns = [c.lower() for c in df.columns]
+        # [关键修复 1] 列名清洗：转小写，去空格
+        df.columns = [c.lower().strip() for c in df.columns]
+        
+        # [关键修复 2] 兼容 'amount' 和 'volume'
+        # 有些源（如腾讯）可能返回 'amount' (成交额) 而不是 'volume' (成交量)，或者列名不同
+        if 'volume' not in df.columns and 'amount' in df.columns:
+            df.rename(columns={'amount': 'volume'}, inplace=True)
         
         # 再次检查关键列是否存在
         required_cols = ['close', 'volume', 'high', 'low', 'open']
-        if not all(col in df.columns for col in required_cols):
-             logger.error(f"❌ 数据缺少关键列: {list(df.columns)}")
-             return TechnicalAnalyzer._get_safe_default_indicators("缺少关键列(OHLCV)")
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+             # logger.error(f"❌ 数据缺少关键列: {missing} | 现有列: {list(df.columns)}")
+             return TechnicalAnalyzer._get_safe_default_indicators(f"缺少关键列:{missing}")
 
         # --- [V14.28 逻辑保留] 全时段动态成交量投影 ---
         try:
