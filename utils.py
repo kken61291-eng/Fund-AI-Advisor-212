@@ -35,12 +35,10 @@ def retry(retries=3, delay=1):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            last_exception = None
             for i in range(retries + 1):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    last_exception = e
                     if i < retries:
                         wait_time = delay * (1 + i)
                         logger.warning(
@@ -49,8 +47,10 @@ def retry(retries=3, delay=1):
                         )
                         time.sleep(wait_time)
                     else:
+                        # [V15.6 修复] 最终失败时抛出异常，而不是返回 None
+                        # 这能防止 main.py 中出现 'NoneType is not iterable' 错误
                         logger.error(f"❌ [{func.__name__}] 彻底失败: {e}")
-                        return None 
+                        raise e 
             return None
         return wrapper
     return decorator
