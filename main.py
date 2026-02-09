@@ -137,10 +137,11 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             val_style = "color:#ffb74d;font-weight:bold;" if "低估" in val_desc else ("color:#ef5350;font-weight:bold;" if "高估" in val_desc else "color:#bdbdbd;")
             committee_html = ""
             ai_data = r.get('ai_analysis', {})
-            bull_say = ai_data.get('bull_say')
-            bear_say = ai_data.get('bear_say')
+            # [修复] 键名匹配：从 news_analyst.py 输出的 key 是 _view 而不是 _say
+            bull_say = ai_data.get('bull_view') or ai_data.get('bull_say', '无')
+            bear_say = ai_data.get('bear_view') or ai_data.get('bear_say', '无')
             chairman = ai_data.get('comment', '无')
-            if bull_say and bear_say:
+            if bull_say != '无' and bear_say != '无':
                 adj_color = "#ff5252" if ai_adj > 0 else ("#69f0ae" if ai_adj < 0 else "#ccc")
                 committee_html = f"""<div style="margin-top:12px;border-top:1px solid #444;padding-top:10px;"><div style="font-size:10px;color:#888;margin-bottom:6px;text-align:center;">--- 联邦投委会辩论 ---</div><div style="display:flex;gap:10px;margin-bottom:8px;"><div style="flex:1;background:rgba(27,94,32,0.2);padding:8px;border-radius:4px;border-left:2px solid #66bb6a;"><div style="color:#66bb6a;font-size:11px;font-weight:bold;margin-bottom:4px;">🦊 CGO (增长)</div><div style="color:#c8e6c9;font-size:11px;line-height:1.3;font-style:italic;">"{bull_say}"</div></div><div style="flex:1;background:rgba(183,28,28,0.2);padding:8px;border-radius:4px;border-left:2px solid #ef5350;"><div style="color:#ef5350;font-size:11px;font-weight:bold;margin-bottom:4px;">🐻 CRO (风控)</div><div style="color:#ffcdd2;font-size:11px;line-height:1.3;font-style:italic;">"{bear_say}"</div></div></div><div style="background:linear-gradient(90deg, rgba(255,183,77,0.1) 0%, rgba(255,183,77,0.05) 100%);padding:10px;border-radius:4px;border:1px solid rgba(255,183,77,0.3);position:relative;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><div style="color:#ffb74d;font-size:12px;font-weight:bold;">⚖️ CIO 终审</div><div style="color:{adj_color};font-size:11px;font-weight:bold;">策略修正: {ai_adj:+d}</div></div><div style="color:#fff3e0;font-size:12px;line-height:1.4;">{chairman}</div></div></div>"""
             vol_ratio = risk.get('vol_ratio', 1.0)
@@ -158,13 +159,11 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
     try:
         logger.info(f"Analyzing {fund['name']}...")
         
-        # [修改] 严格获取数据，如果为 None 直接返回，不进行模拟
         data = fetcher.get_fund_history(fund['code'])
         if data is None or data.empty: 
             logger.warning(f"⚠️ 无法获取 {fund['name']} 的真实数据，跳过分析。")
             return None, "", []
 
-        # 计算技术指标
         tech = TechnicalAnalyzer.calculate_indicators(data)
         if not tech: return None, "", []
         
@@ -190,7 +189,6 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
 
         if analyst and should_run_ai:
             sector_news_list = analyst.fetch_news_titles(keyword)
-            # [日志增强] 打印新闻源获取情况
             logger.info(f"📰 [News Source] {fund['name']}: Found {len(sector_news_list)} articles")
             
             cro_signal = tech.get('tech_cro_signal', 'PASS')
@@ -208,7 +206,7 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
                 ai_adj = ai_res.get('adjustment', 0)
             except Exception as ai_e:
                 logger.error(f"❌ AI Analysis Failed for {fund['name']}: {ai_e}")
-                ai_res = {"bull_say": "系统故障", "bear_say": "请检查日志", "comment": "AI离线", "adjustment": 0}
+                ai_res = {"bull_view": "系统故障", "bear_view": "请检查日志", "comment": "AI离线", "adjustment": 0}
             
             for n_str in sector_news_list:
                 if "]" in n_str:
@@ -226,11 +224,11 @@ def process_single_fund(fund, config, fetcher, scanner, tracker, val_engine, ana
             if amt > 0: tracker.add_trade(fund['code'], fund['name'], amt, tech['price'])
             elif is_sell: tracker.add_trade(fund['code'], fund['name'], s_val, tech['price'], True)
 
-        bull = ai_res.get('bull_say', '无')
-        bear = ai_res.get('bear_say', '无')
+        # [修复] 统一使用 _view 后缀
+        bull = ai_res.get('bull_view') or ai_res.get('bull_say', '无')
+        bear = ai_res.get('bear_view') or ai_res.get('bear_say', '无')
         cro_tech = tech.get('tech_cro_comment', '无')
         
-        # [日志增强] 强制打印投委会辩论摘要
         if bull != '无' or bear != '无':
             logger.info(f"🗣️ [投委会 {fund['name']}]\n   🦊 CGO: {bull}\n   🐻 CRO: {bear}")
 
@@ -259,7 +257,7 @@ def main():
     tracker = PortfolioTracker()
     val_engine = ValuationEngine()
     
-    logger.info(f">>> [V15.9] Startup | DEBUG_MODE={DEBUG_MODE} | Real Data Only")
+    logger.info(f">>> [V15.10] Startup | DEBUG_MODE={DEBUG_MODE} | Real Data Only")
     tracker.confirm_trades()
     try: analyst = NewsAnalyst()
     except: analyst = None
