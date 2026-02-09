@@ -68,10 +68,12 @@ class TechnicalAnalyzer:
             
             # [关键修复 2] 兼容 'amount' 和 'volume'
             # 如果没有 volume 但有 amount，临时用 amount 代替 volume 进行趋势计算
+            # 腾讯源可能只返回 amount (成交额)
             if 'volume' not in df.columns and 'amount' in df.columns:
                 df.rename(columns={'amount': 'volume'}, inplace=True)
             
             # [关键修复 3] 强制类型转换，防止字符串导致的计算错误
+            # 某些源返回的数据可能是 string 类型
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -105,7 +107,7 @@ class TechnicalAnalyzer:
                     projected_vol = original_vol * multiplier
                     
                     # 修改数据 [使用 .copy() 避免警告]
-                    # 注意：如果此时是 amount 代替的 volume，预测的也是全天成交额，逻辑依然成立
+                    # 注意：如果此时是 amount 代替的 volume，预测的也是全天成交额，逻辑依然成立(同比例放大)
                     vol_idx = df.columns.get_loc('volume')
                     df.iloc[-1, vol_idx] = float(projected_vol) 
                     
