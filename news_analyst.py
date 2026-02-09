@@ -65,35 +65,21 @@ class NewsAnalyst:
         
         final_text = "\n".join(unique_news)
         
-        logger.info(f"📖 构建舆情上下文: {len(unique_news)} 条新闻, 总长度 {len(final_text)}")
-        
         if len(final_text) > max_length:
             return final_text[:max_length] + "\n...(早期消息已截断)"
         
         return final_text if final_text else "今日暂无重大新闻。"
 
-    # [核心修复] 增强版 JSON 清洗
     def _clean_json(self, text):
         try:
-            # 1. 移除 <think> 标签
             text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-            
-            # 2. 尝试提取 ```json ... ``` 代码块
             code_match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
-            if code_match:
-                return code_match.group(1)
-            
-            # 3. 尝试提取纯 {} 对象
-            # 找到第一个 { 和最后一个 }
+            if code_match: return code_match.group(1)
             start = text.find('{')
             end = text.rfind('}')
-            if start != -1 and end != -1:
-                return text[start:end+1]
-            
+            if start != -1 and end != -1: return text[start:end+1]
             return "{}"
-        except Exception as e:
-            logger.error(f"JSON清洗失败: {e}")
-            return "{}"
+        except: return "{}"
     
     def _clean_html(self, text):
         text = text.replace("```html", "").replace("```", "").strip()
@@ -124,21 +110,30 @@ class NewsAnalyst:
         - 熔断等级: {fuse_level} (0-3，>=2为限制交易)
         - 风控指令: {fuse_msg}
         
-        舆情因子 (全量上下文):
-        - 市场消息流: 
+        舆情因子:
         {str(news)[:15000]}
 
-        --- 角色定义 ---
-        1. **CGO**: 寻找右侧交易机会。若趋势强度<50，直接输出HOLD。
-        2. **CRO**: 证明"为什么现在不该做"。若熔断等级>=2，必须否决。
-        3. **CIO**: 基于"胜率×赔率"做最终裁决。决策必须明确。
+        --- 角色定义 (请丰富人设细节) ---
+        1. **CGO (动量猎手)**: 
+           - 风格: 激进、敏锐。专注于右侧突破。
+           - 任务: 结合MACD金叉、RSI区间和新闻利好，寻找做多理由。
+           - 纪律: 若趋势<50，必须承认"当前无势可借"。
+
+        2. **CRO (合规铁闸)**: 
+           - 风格: 冷酷、保守。专注于左侧避险。
+           - 任务: 泼冷水。指出VR背离、熔断限制或新闻利空。
+           - 纪律: 必须引用具体数据（如"VR仅0.6"）来驳斥CGO。
+
+        3. **CIO (最终裁决)**: 
+           - 风格: 平衡、果断。
+           - 任务: 权衡胜率与赔率。给出明确的"买入/卖出/观望"指令。
 
         【输出格式-严格JSON】
-        请直接输出 JSON，不要包含 Markdown 标记。
+        请输出 JSON，不要 Markdown。
         {{
-            "bull_view": "CGO观点 (50字以内)",
-            "bear_view": "CRO观点 (50字以内)",
-            "chairman_conclusion": "CIO裁决 (80字以内)",
+            "bull_view": "CGO观点 (80字以内): 引用具体技术指标和新闻，阐述进攻逻辑。",
+            "bear_view": "CRO观点 (80字以内): 引用风控数据，阐述防守逻辑。",
+            "chairman_conclusion": "CIO裁决 (100字以内): 综合多空双方，给出最终操作指令及仓位建议。",
             "adjustment": 整数数值 (-30 到 +30)
         }}
         """
@@ -146,29 +141,24 @@ class NewsAnalyst:
         payload = {
             "model": self.model_tactical,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "max_tokens": 1000,
+            "temperature": 0.3, # 稍微提高温度，增加丰富性
+            "max_tokens": 1500,
             "response_format": {"type": "json_object"}
         }
         
         try:
             resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
             if resp.status_code != 200:
-                logger.error(f"API Error {resp.status_code}: {resp.text}")
                 return {"bull_view": "API Error", "bear_view": "API Error", "comment": "API Error", "adjustment": 0}
             
             content = resp.json()['choices'][0]['message']['content']
-            
-            # [关键] 先清洗，再 parse
-            cleaned_json = self._clean_json(content)
-            result = json.loads(cleaned_json)
+            result = json.loads(self._clean_json(content))
             
             if "chairman_conclusion" in result and "comment" not in result:
                 result["comment"] = result["chairman_conclusion"]
             return result
         except Exception as e:
             logger.error(f"AI Analysis Failed {fund_name}: {e}")
-            # 返回默认值，防止主程序崩溃
             return {"bull_view": "解析失败", "bear_view": "解析失败", "comment": "JSON Error", "adjustment": 0}
 
     @retry(retries=2, delay=5)
@@ -180,7 +170,7 @@ class NewsAnalyst:
         1. 全天候宏观舆情: {macro_str[:2000]}
         2. 交易报告: {report_text}
         
-        【任务】使用 DeepSeek-R1 思维链进行宏观定调、归因分析和战略指令下达。
+        【任务】使用 DeepSeek-R1 思维链进行宏观定调、归因分析和战略指令下达。请模仿高盛内部备忘录风格，专业、冷峻。
         """
         return self._call_r1(prompt)
 
@@ -193,7 +183,10 @@ class NewsAnalyst:
         1. 全天候宏观舆情: {macro_str[:2000]}
         2. CIO交易: {report_text}
         
-        【任务】盲点警示、逻辑压力测试、最终验证。
+        【任务】
+        1. 盲点警示：指出CIO可能忽略的宏观风险。
+        2. 逻辑压力测试：质疑今日交易的合理性。
+        3. 最终验证：给出"通过"或"驳回"建议。
         """
         return self._call_r1(prompt)
 
