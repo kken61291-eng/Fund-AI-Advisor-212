@@ -2,9 +2,6 @@ import requests
 import json
 import os
 import re
-import time
-import akshare as ak
-import pandas as pd
 from datetime import datetime
 from utils import logger, retry
 
@@ -12,13 +9,20 @@ class NewsAnalyst:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.base_url = os.getenv("LLM_BASE_URL")
-        self.model = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
+        
+        # [V15.6 算力分层架构]
+        # 战术执行层: DeepSeek-V3 (低延迟、结构化、严守纪律)
+        self.model_tactical = "Pro/deepseek-ai/DeepSeek-V3"     
+        
+        # 战略思考层: DeepSeek-R1 (思维链、非线性推理、归因分析)
+        self.model_strategic = "Pro/deepseek-ai/DeepSeek-R1" 
+
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         self.cls_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0",
             "Referer": "https://www.cls.cn/telegraph",
             "Origin": "https://www.cls.cn"
         }
@@ -36,274 +40,267 @@ class NewsAnalyst:
             return str(time_str)[:11]
 
     def _fetch_eastmoney_news(self):
-        raw_list = []
         try:
+            import akshare as ak
             df = ak.stock_news_em(symbol="要闻")
-            junk_words = ["汇总", "集锦", "收评", "早报", "公告", "提示", "复盘"]
+            raw_list = []
             for _, row in df.iterrows():
-                title = str(row.get('title', ''))
-                raw_time = str(row.get('public_time', ''))
-                if any(jw in title for jw in junk_words): continue
-                time_str = self._format_short_time(raw_time)
-                raw_list.append({
-                    "text": f"[{time_str}] (东财) {title}",
-                    "pure_title": title,
-                    "timestamp": raw_time
-                })
-        except Exception as e:
-            logger.warning(f"东财源微瑕: {e}")
-        return raw_list
+                title = str(row.get('title', ''))[:40]
+                raw_list.append(f"[{str(row.get('public_time',''))[5:16]}] (东财) {title}")
+            return raw_list[:5]
+        except:
+            return []
 
     def _fetch_cls_telegraph(self):
         raw_list = []
         url = "https://www.cls.cn/nodeapi/telegraphList"
-        params = {"rn": 30, "sv": 7755}
+        params = {"rn": 20, "sv": 7755}
         try:
             resp = requests.get(url, headers=self.cls_headers, params=params, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 if "data" in data and "roll_data" in data["data"]:
-                    items = data["data"]["roll_data"]
-                    for item in items:
+                    for item in data["data"]["roll_data"]:
                         title = item.get("title", "")
                         content = item.get("content", "")
-                        ctime = item.get("ctime", 0)
-                        display_text = title if title else content[:50].replace("\n", " ")
-                        if not display_text: continue
-                        time_str = self._format_short_time(ctime)
-                        raw_list.append({
-                            "text": f"[{time_str}] (财社) {display_text}",
-                            "pure_title": display_text,
-                            "timestamp": ctime
-                        })
+                        txt = title if title else content[:50]
+                        time_str = self._format_short_time(item.get("ctime", 0))
+                        raw_list.append(f"[{time_str}] (财社) {txt}")
         except Exception as e:
-            logger.warning(f"财社直连微瑕: {e}")
+            logger.warning(f"财社源微瑕: {e}")
         return raw_list
 
     @retry(retries=2, delay=2)
     def fetch_news_titles(self, keywords_str):
-        if not keywords_str: return []
+        l1 = self._fetch_cls_telegraph()
+        l2 = self._fetch_eastmoney_news()
+        all_n = l1 + l2
+        hits = []
         keys = keywords_str.split()
-        pool_em = self._fetch_eastmoney_news()
-        pool_cls = self._fetch_cls_telegraph()
-        all_news_items = pool_cls + pool_em
-        
-        hit_list = []
-        fallback_list = []
-        seen_titles = set()
-
-        for item in all_news_items:
-            clean_t = item['pure_title'].replace(" ", "")[:10]
-            if clean_t in seen_titles: continue
-            seen_titles.add(clean_t)
-            if len(fallback_list) < 5: fallback_list.append(item['text'])
-            if any(k in item['pure_title'] for k in keys):
-                hit_list.append(item['text'])
-
-        if not hit_list and len(keys) > 0:
-            try:
-                sector_key = keys[0]
-                df_sector = ak.stock_news_em(symbol=sector_key)
-                for _, row in df_sector.iterrows():
-                    title = str(row.get('title', ''))
-                    time_str = self._format_short_time(str(row.get('public_time', '')))
-                    hit_list.append(f"[{time_str}] (板块) {title}")
-                    if len(hit_list) >= 3: break
-            except:
-                pass
-
-        final_list = hit_list[:10] if hit_list else [f"[市场背景] {x}" for x in fallback_list[:4]]
-        logger.info(f"📰 [情报融合] 关键词:{keys} | 财社:{len(pool_cls)} | 东财:{len(pool_em)} | 命中:{len(hit_list)}")
-        for n in final_list: logger.info(f"  > {n}")
-        return final_list
+        seen = set()
+        for n in all_n:
+            clean_n = n.split(']')[-1].strip()
+            if clean_n in seen: continue
+            seen.add(clean_n)
+            if any(k in n for k in keys):
+                hits.append(n)
+        return hits[:8] if hits else l1[:3]
 
     def _clean_json(self, text):
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
         try:
-            match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
-            if match: return match.group(1)
             match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match: return match.group(0)
-            return text
-        except: return text
+            return match.group(0) if match else "{}"
+        except: return "{}"
 
-    @retry(retries=2, delay=2)
-    def analyze_fund_v4(self, fund_name, tech_indicators, macro_summary, sector_news):
-        # 1. 基础数据
-        score = tech_indicators.get('quant_score', 50)
-        trend = tech_indicators.get('trend_weekly', '无趋势')
-        valuation = tech_indicators.get('valuation_desc', '未知')
+    @retry(retries=1, delay=2)
+    def analyze_fund_v5(self, fund_name, tech, macro, news, risk):
+        """
+        战术层: V3 模型
+        任务: CGO(进攻) -> CRO(风控) -> CIO(裁决) 闭环
+        特点: 严格 JSON 输出，低温度(0.1)，无幻觉
+        """
+        # 数据解构
+        fuse = risk['fuse_level']
+        fuse_msg = risk['risk_msg']
         
-        # 2. 资金与量能
-        obv_slope = tech_indicators.get('flow', {}).get('obv_slope', 0)
-        money_flow = "资金抢筹" if obv_slope > 1.0 else ("资金出逃" if obv_slope < -1.0 else "存量博弈")
+        trend = tech.get('trend_weekly', '无趋势')
+        rsi = tech.get('rsi', 50)
+        macd = tech.get('macd', {})
+        macd_str = f"Trend:{macd.get('trend','N/A')}, Hist:{macd.get('hist',0)}"
+        vol_ratio = tech.get('risk_factors', {}).get('vol_ratio', 1.0)
+        pct_b = tech.get('risk_factors', {}).get('bollinger_pct_b', 0.5)
         
-        vol_ratio = tech_indicators.get('risk_factors', {}).get('vol_ratio', 1.0)
-        if vol_ratio < 0.6: volume_status = "流动性枯竭 (极度缩量)"
-        elif vol_ratio < 0.8: volume_status = "缩量回调"
-        elif vol_ratio > 2.0: volume_status = "放量分歧/突破"
-        else: volume_status = "温和"
-
-        # 3. 战术三件套
-        rsi = tech_indicators.get('rsi', 50)
-        macd_data = tech_indicators.get('macd', {})
-        macd_status = macd_data.get('trend', '未知')
-        macd_hist = macd_data.get('hist', 0)
-        pct_b = tech_indicators.get('risk_factors', {}).get('bollinger_pct_b', 0.5)
+        # 1. 构造 CGO 提示词 (V3-极速版)
+        cgo_prompt = f"""
+        【系统角色】
+        你是玄铁量化基金的**CGO (动量策略分析师)**，专注右侧交易与Alpha挖掘。
         
-        if pct_b > 1.0: bollinger_status = "突破上轨 (极端强势)"
-        elif pct_b > 0.8: bollinger_status = "触及压力位"
-        elif pct_b < 0.0: bollinger_status = "跌破下轨 (极端弱势)"
-        elif pct_b < 0.2: bollinger_status = "触及支撑位"
-        else: bollinger_status = "中轨震荡"
+        【输入数据】
+        标的: {fund_name}
+        技术因子:
+        - 趋势: {trend}
+        - RSI(14): {rsi}
+        - MACD: {macd_str}
+        - 成交量偏离(VR): {vol_ratio}
+        - 布林位置: {pct_b}
+        舆情因子: {str(news)[:400]}
 
-        # [V14.35] 华尔街人格觉醒版 Prompt
-        prompt = f"""
-        你现在是【玄铁联邦投委会】的决策现场。
-        请基于【全息档案】和【自查情报】，进行一场 **"双盲辩论"**。
+        【分析框架】
+        1. 趋势确认: 周线方向？均线排列？
+        2. 动量质量: RSI是否处于40-70健康区间？
+        3. 量能验证: 上涨是否放量？VR>1.2为确认，<0.8为警示
+        4. 赔率测算: 目标位/止损位
+        
+        【纪律】
+        - 若趋势强度弱(周线Down)，直接输出HOLD。
+        - 禁止模糊表述，禁止情绪词汇。
+        """
 
-        📁 **公开·全息档案 (Blind Data)**:
-        [注意：CGO和CRO不可见模型评分]
-        -------------------------------------------
-        【趋势定性】
-        - 标的: {fund_name}
-        - 周线趋势: {trend} (决定长期方向)
-        - 估值状态: {valuation}
+        # 2. 构造 CRO 提示词 (V3-硬约束版)
+        cro_prompt = f"""
+        【系统角色】
+        你是玄铁量化基金的**CRO (风控合规官)**，负责左侧风险扫描。
+        
+        【风险因子】
+        - 熔断等级: {fuse}级 (指令: {fuse_msg})
+        - 技术背离: 价格与RSI/MACD是否背离？
+        - 流动性: VR={vol_ratio} (VR<0.6为流动性枯竭)
+        
+        【压力测试框架】
+        1. 熔断硬约束: 若等级>=2，自动触发Veto。
+        2. 流动性折价: 冲击成本测算。
+        3. 宏观错配: 当前环境是否支持该资产？
+        
+        【硬约束】
+        - 必须证明"为什么现在不该做"。
+        - 禁止与CGO妥协。
+        """
 
-        【时机信号】
-        - MACD: {macd_status} (Hist: {macd_hist})
-        - RSI(14): {rsi} (>70超买; <30超卖; 50震荡)
-        - 布林位置: {bollinger_status}
-
-        【量能资金】
-        - 资金意图: {money_flow} (OBV斜率: {obv_slope:.2f})
-        - 量能状态: {volume_status} (VR: {vol_ratio})
-        -------------------------------------------
-
-        📰 **自查情报**:
-        - 宏观: {macro_summary[:600]}
-        - 行业: {str(sector_news)[:600]}
-
-        🔒 **【CIO专享·机密档案】**:
-        - 基础分: {score}
-        - (仅供CIO校准，防止辩论跑偏)
-
-        --- 🏛️ 参会人员与人设 ---
-
-        1. **🦊 CGO (增长官)** - [盲评模式]
-           - **人设**: 激进的动量交易者，信仰趋势。
-           - **任务**: 寻找一切做多理由。
-           - **底线**: 如果MACD死叉且量能枯竭，必须**诚实地放弃抵抗**。
-
-        2. **🐻 CRO (风控官)** - [盲评模式]
-           - **人设**: 谨慎的空头，信仰均值回归。
-           - **任务**: 寻找一切风险点。
-           - **底线**: 如果量价齐升且估值低，必须**诚实地承认**安全。
-
-        3. **⚖️ CIO (首席投资官)** - [核心灵魂人物]
-           - **人设**: **华尔街老兵**，穿越过2000年科网泡沫和2008年次贷危机。你不仅仅是裁判，更是一位**拥有独立嗅觉的猎手**。
-           - **独立思考 (Critical Thinking)**:
-             * **反身性思考**: 现在的利好是不是已经"Price-in"了？现在的恐慌是不是"黄金坑"？
-             * **降维打击**: 如果CGO和CRO纠结于15分钟级别的波动，你要站在**宏观周期**的高度一锤定音。
-             * **数据验证**: 对照【机密基础分】。如果模型分很高，但你凭借经验觉得市场在诱多，**果断扣分**。不要迷信模型。
-           - **最终决策**: 
-             * 必须给出一个**统一的、带有方向性**的结论（攻或守）。
-             * 你的话语权最大，不用只做和事佬。
-
-        --- 输出要求 (JSON) ---
+        # 3. 构造 CIO 提示词 (V3-裁决版)
+        cio_prompt = f"""
+        【系统角色】
+        你是玄铁量化基金的**CIO (投资总监)**。你接收CGO与CRO的观点，做出战术裁决。
+        
+        【决策矩阵】
+        1. 胜率<40% 或 赔率<1:1.5 -> 否决
+        2. 熔断等级>=2 -> 否决
+        3. 胜率>60% 且 风险可控 -> 批准
+        
+        【输出格式-严格JSON】
         {{
-            "bull_view": "CGO: (引用数据)... 观点 (50字)",
-            "bear_view": "CRO: (引用数据)... 观点 (50字)",
-            "chairman_conclusion": "CIO: [华尔街老兵视角]... 最终修正 (80字)",
-            "adjustment": 整数数值 (-30 到 +30),
-            "risk_alert": "核心风险点"
+            "bull_view": "CGO观点 (50字): 核心逻辑与赔率测算。",
+            "bear_view": "CRO观点 (50字): 核心风险与熔断警示。",
+            "chairman_conclusion": "CIO裁决 (80字): 最终战术定性。包含：决策(买/卖/观望)、仓位建议、止损位。",
+            "adjustment": 整数数值 (-30 到 +30)
         }}
         """
 
+        # 合并 Prompt 给 V3 (利用 V3 的长窗口一次性处理，保证上下文连贯)
+        final_prompt = f"{cgo_prompt}\n\n{cro_prompt}\n\n{cio_prompt}\n\n请模拟上述三位专家的思考过程，并直接输出最终的 JSON 结果。"
+        
         payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.4, 
-            "max_tokens": 1200
+            "model": self.model_tactical, # V3
+            "messages": [{"role": "user", "content": final_prompt}],
+            "temperature": 0.2, # 低温，确保结构化和纪律性
+            "max_tokens": 1000,
+            "response_format": {"type": "json_object"}
         }
         
         try:
-            logger.info(f"🧠 [联邦辩论] {fund_name} 投委会(盲评+CIO觉醒)召开中...")
-            response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
-            
-            if response.status_code != 200: 
-                logger.error(f"API Error: {response.text}")
-                return self._fallback_result(sector_news)
+            resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
+            if resp.status_code != 200:
+                logger.error(f"API Error: {resp.text[:100]}")
+                raise Exception(f"API {resp.status_code}")
                 
-            raw_content = response.json()['choices'][0]['message']['content']
-            logger.info(f"📝 [会议纪要 {fund_name}]:\n{raw_content}")
-            data = json.loads(self._clean_json(raw_content))
-            return {
-                "bull_say": data.get("bull_view", "..."),
-                "bear_say": data.get("bear_view", "..."),
-                "comment": data.get("chairman_conclusion", "需人工介入"),
-                "adjustment": int(data.get("adjustment", 0)),
-                "risk_alert": data.get("risk_alert", "无"),
-                "used_news": sector_news 
-            }
+            data = resp.json()
+            if isinstance(data, str): data = json.loads(data)
+            content = data['choices'][0]['message']['content']
+            return json.loads(self._clean_json(content))
         except Exception as e:
-            logger.error(f"投委会崩溃 {fund_name}: {e}")
-            return self._fallback_result(sector_news)
+            logger.error(f"AI战术分析异常 {fund_name}: {e}")
+            raise e
 
-    def _fallback_result(self, news):
-        return {"bull_say": "数据缺失", "bear_say": "风险未知", "comment": "连接中断", "adjustment": 0, "risk_alert": "API Error", "used_news": news}
-
-    @retry(retries=2, delay=2)
+    @retry(retries=2, delay=5)
     def review_report(self, report_text):
+        """
+        战略层: R1 模型
+        任务: 机构级市场复盘备忘录
+        特点: 深度推理，高温度(0.4)，HTML输出
+        """
         prompt = f"""
-        你是【玄铁量化】的 **CIO**。
-        请对以下汇总进行【战略审计】，输出 HTML。
+        【系统角色】
+        你是玄铁量化基金的**CIO (投资总监)**，负责撰写机构级市场复盘备忘录。
+        此报告将提交投委会，作为下一阶段风险预算与战略调整的依据。
         
-        【汇总】{report_text}
-
-        输出模板：
-        <div class="cio-section">
-            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">宏观定调</h3>
-            <p>...</p>
-            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">双轨审计</h3>
-            <p>...</p>
-            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">CIO指令</h3>
-            <p>...</p>
+        【输入数据】
+        全市场交易汇总:
+        {report_text}
+        
+        【深度分析要求 - 必须使用 DeepSeek-R1 思维链】
+        1. 收益归因: 拆解Alpha来源，识别运气与能力。
+        2. 风险归因: 风险主要来自系统性暴露还是特异性风险？
+        3. 策略失效检测: 当前市场regime是否导致策略暂时失效？
+        
+        【输出格式-HTML】
+        <div class="cio-memo">
+            <h3 style="border-left: 4px solid #1a237e; padding-left: 10px;">宏观环境审视</h3>
+            <p>流动性评估与风险偏好审计（100字）。</p>
+            
+            <h3 style="border-left: 4px solid #1a237e; padding-left: 10px;">收益与风险归因</h3>
+            <p>基于数据的归因分析与异常点解释（100字）。</p>
+            
+            <h3 style="border-left: 4px solid #d32f2f; padding-left: 10px;">CIO战术指令</h3>
+            <p>总仓位控制、风险敞口调整与明日重点监控阈值（80字）。</p>
         </div>
         """
-        return self._call_llm_text(prompt, "CIO 战略审计")
-
-    @retry(retries=2, delay=2)
-    def advisor_review(self, report_text, macro_str):
-        prompt = f"""
-        你是 **【玄铁先生】**，一位冷峻的市场哲学家。具有丰富的投资经验，独立查询近期新闻和ETF实盘验证报告可信度。
-        请写一段【场外实战复盘】 (HTML)。
-
-        【宏观】{macro_str[:1500]} 
-        【决议】{report_text}
-
-        请透过现象看本质。输出：
-        <div class="advisor-section">
-            <h4 style="color: #ffd700;">【势·验证】</h4><p>...</p>
-            <h4 style="color: #ffd700;">【术·底仓】</h4><p>...</p>
-            <h4 style="color: #ffd700;">【断·进攻】</h4><p>...</p>
-        </div>
-        """
-        return self._call_llm_text(prompt, "玄铁先生复盘")
-
-    def _call_llm_text(self, prompt, task_name):
+        
         payload = {
-            "model": self.model,
+            "model": self.model_strategic, # R1
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5,
-            "max_tokens": 1500
+            "max_tokens": 3000,
+            "temperature": 0.4 # 适度创造性，允许深度推理
         }
         try:
-            response = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
-            if response.status_code == 200:
-                raw_text = response.json()['choices'][0]['message']['content']
-                clean_text = raw_text.replace("```html", "").replace("```", "").strip()
-                return clean_text
-            return f"{task_name} 生成失败: API Error"
-        except Exception as e:
-            logger.error(f"{task_name} 失败: {e}")
-            return f"{task_name} 暂时缺席 (网络波动)"
+            resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=120)
+            data = resp.json()
+            if isinstance(data, str): data = json.loads(data)
+            content = data['choices'][0]['message']['content']
+            clean_content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+            return self._clean_html(clean_content)
+        except:
+            return "<p>CIO 正在进行深度战略审计...</p>"
+
+    @retry(retries=2, delay=5)
+    def advisor_review(self, report_text, macro_str):
+        """
+        战略层: R1 模型
+        任务: 首席宏观策略师报告
+        特点: 周期定位，非线性推理
+        """
+        prompt = f"""
+        【系统角色】
+        你是玄铁量化基金的**首席宏观策略师**。
+        你使用DeepSeek-R1的深度推理能力，识别非线性关系与预期差。
+        
+        【输入数据】
+        宏观背景: {macro_str[:400]}
+        市场数据: {report_text}
+        
+        【推理要求 - 必须使用 DeepSeek-R1 思维链】
+        1. 周期定位: 当前处于三周期（库存/信用/货币）的什么阶段？
+        2. 预期差识别: 市场当前price in了什么宏观假设？
+        3. 策略映射: 基于周期位置，最优配置策略是什么？
+        
+        【输出格式-HTML结构化】
+        <div class="macro-report">
+            <h4 style="color: #ffd700;">【势·周期定位】</h4>
+            <p>当前周期阶段判定与历史可比阶段对标（100字）。</p>
+            
+            <h4 style="color: #ffd700;">【术·预期差分析】</h4>
+            <p>市场隐含假设与潜在修正风险点（100字）。</p>
+            
+            <h4 style="color: #ffd700;">【断·战略配置】</h4>
+            <p>基于周期的配置框架与战术偏离建议（80字）。</p>
+        </div>
+        """
+        
+        payload = {
+            "model": self.model_strategic, # R1
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 3000,
+            "temperature": 0.4
+        }
+        try:
+            resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=120)
+            data = resp.json()
+            if isinstance(data, str): data = json.loads(data)
+            content = data['choices'][0]['message']['content']
+            clean_content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+            return self._clean_html(clean_content)
+        except:
+            return "<p>首席策略师正在闭关推演...</p>"
+            
+    def _clean_html(self, text):
+        text = text.replace("```html", "").replace("```", "").strip()
+        return text
