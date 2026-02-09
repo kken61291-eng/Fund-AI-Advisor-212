@@ -22,8 +22,10 @@ def load_config():
         logger.error(f"配置文件读取失败: {e}")
         return {"funds": [], "global": {"base_invest_amount": 1000, "max_daily_invest": 5000}}
 
-# [修改点 1] 增加 ai_decision 参数，并实现“圣旨”逻辑
 def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_amt, max_daily, pos, strategy_type, fund_name):
+    """
+    V13 核心算分逻辑 (含 CIO 一票否决权)
+    """
     base_score = tech.get('quant_score', 50)
     
     if DEBUG_MODE:
@@ -35,6 +37,7 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     logger.info(f"🧮 [算分 {fund_name}] 技术面({base_score}) + CIO修正({ai_adj:+d} {action_str}) = 初步分({tactical_score})")
     
     # 2. [核心逻辑] CIO 一票否决权 (Override)
+    # 解决"口嫌体正直"问题：如果 AI 说 HOLD/REJECT，强制覆盖量化分数
     override_reason = ""
     original_score = tactical_score
     
@@ -106,7 +109,11 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     return final_amt, label, is_sell, sell_val
 
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
+    """
+    生成完整的 HTML 邮件报告
+    """
     news_html = ""
+    # 处理新闻列表显示
     if isinstance(all_news, list):
         for i, news in enumerate(all_news[:15]):
             title = news.get('title', str(news))
@@ -233,8 +240,8 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
                 logger.error(f"AI Analysis Failed: {e}")
                 ai_res = {"bull_view": "Error", "bear_view": "Error", "comment": "Offline", "adjustment": 0}
 
-        # 5. [修改点 2] 提取 AI 决策并传递给算分函数
-        ai_decision = ai_res.get('decision', 'PASS') # 默认为PASS/HOLD，不强制干预
+        # 5. [关键] 提取 AI 决策并传递给算分函数
+        ai_decision = ai_res.get('decision', 'PASS') 
         
         amt, lbl, is_sell, s_val = calculate_position_v13(
             tech, ai_adj, ai_decision, val_mult, val_desc, base_amt, max_daily, pos, fund.get('strategy_type'), fund['name']
