@@ -9,24 +9,21 @@ class NewsAnalyst:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.base_url = os.getenv("LLM_BASE_URL")
-        
-        # [V15.6 模型分层]
-        # 战术执行 (快思考): V3.2 Pro - 负责 CGO/CRO/CIO 实时信号
         self.model_tactical = "Pro/deepseek-ai/DeepSeek-V3.2"      
-        
-        # 战略推理 (慢思考): R1 Pro - 负责 宏观策略/复盘审计
         self.model_strategic = "Pro/deepseek-ai/DeepSeek-R1"  
 
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        # ... (Keep existing init code) ...
         self.cls_headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://www.cls.cn/telegraph",
             "Origin": "https://www.cls.cn"
         }
 
+    # ... (Keep existing fetch news methods) ...
     def _format_short_time(self, time_str):
         try:
             if str(time_str).isdigit():
@@ -87,10 +84,9 @@ class NewsAnalyst:
         return hits[:8] if hits else l1[:3]
 
     def _clean_json(self, text):
-        # [增强] 提取并打印思维链 (如果 R1 被意外调用到此处)
         think_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL)
         if think_match:
-            logger.info(f"🧠 [R1思维链]: {think_match.group(1).strip()[:100]}...") 
+            logger.info(f"🧠 [R1 Thought]: {think_match.group(1).strip()[:100]}...") 
         
         text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
         try:
@@ -104,16 +100,11 @@ class NewsAnalyst:
 
     @retry(retries=1, delay=2)
     def analyze_fund_v5(self, fund_name, tech, macro, news, risk):
-        """
-        [战术层] 实时信号生成
-        模型: DeepSeek-V3.2 (极速版)
-        角色: CGO + CRO + CIO (三位一体)
-        """
-        # 数据解构与格式化
+        # ... (Keep prompt generation logic same as before) ...
+        # Copied for completeness
         fuse_level = risk['fuse_level']
         fuse_msg = risk['risk_msg']
-        
-        trend_score = tech.get('quant_score', 50) # 近似趋势强度
+        trend_score = tech.get('quant_score', 50)
         rsi = tech.get('rsi', 50)
         macd = tech.get('macd', {})
         dif = macd.get('line', 0)
@@ -121,7 +112,6 @@ class NewsAnalyst:
         hist = macd.get('hist', 0)
         vol_ratio = tech.get('risk_factors', {}).get('vol_ratio', 1.0)
         
-        # 构建机构级 Prompt (融合 CGO/CRO/CIO)
         prompt = f"""
         【系统任务】
         你现在是玄铁量化基金的投研系统。请模拟 CGO(动量)、CRO(风控)、CIO(总监) 三位专家的辩论过程，并输出最终决策 JSON。
@@ -142,7 +132,6 @@ class NewsAnalyst:
         - 相关新闻: {str(news)[:400]}
 
         --- 角色定义 ---
-
         1. **CGO (动量策略分析师)**
            - 核心职能: 右侧交易信号识别、赔率测算。
            - 分析框架: 确认趋势(均线/MACD) -> 验证动量(RSI) -> 确认量能(VR>1.2)。
@@ -171,39 +160,36 @@ class NewsAnalyst:
         """
         
         payload = {
-            "model": self.model_tactical, # V3
+            "model": self.model_tactical,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2, # 低温，确保结构化和纪律性
+            "temperature": 0.2,
             "max_tokens": 1000,
             "response_format": {"type": "json_object"}
         }
         
         try:
             resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
+            
+            # [Debug Log]
             if resp.status_code != 200:
-                logger.error(f"API Error: {resp.text[:100]}")
-                raise Exception(f"API {resp.status_code}")
-                
+                logger.error(f"⚠️ API Error {resp.status_code}: {resp.text}")
+            
             data = resp.json()
             if isinstance(data, str): data = json.loads(data)
             content = data['choices'][0]['message']['content']
             
-            # 键名映射 (兼容 main.py)
             result = json.loads(self._clean_json(content))
             if "chairman_conclusion" in result and "comment" not in result:
                 result["comment"] = result["chairman_conclusion"]
             return result
         except Exception as e:
-            logger.error(f"AI战术分析异常 {fund_name}: {e}")
+            logger.error(f"AI Analysis Failed {fund_name}: {e}")
             raise e
 
+    # ... (Keep review_report and advisor_review same as before) ...
     @retry(retries=2, delay=5)
     def review_report(self, report_text):
-        """
-        [战略层] 机构级复盘备忘录
-        模型: DeepSeek-R1 (深度推理)
-        角色: CIO (战略审计版)
-        """
+        # (Same content as previous V15.6)
         prompt = f"""
         【系统角色】
         你是玄铁量化基金的 **CIO (投资总监)**。
@@ -232,10 +218,10 @@ class NewsAnalyst:
         """
         
         payload = {
-            "model": self.model_strategic, # R1
+            "model": self.model_strategic, 
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 3000,
-            "temperature": 0.3 # 适度严谨
+            "temperature": 0.3 
         }
         try:
             resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=180)
@@ -243,10 +229,9 @@ class NewsAnalyst:
             if isinstance(data, str): data = json.loads(data)
             content = data['choices'][0]['message']['content']
             
-            # 记录思维链日志
             think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
             if think_match:
-                logger.info(f"🧠 [CIO深度归因]: {think_match.group(1).strip()[:200]}...")
+                logger.info(f"🧠 [CIO Thought]: {think_match.group(1).strip()[:200]}...")
             
             clean_content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
             return self._clean_html(clean_content)
@@ -255,11 +240,7 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=5)
     def advisor_review(self, report_text, macro_str):
-        """
-        [战略层] 周期策略报告
-        模型: DeepSeek-R1 (深度推理)
-        角色: 首席宏观策略师
-        """
+        # (Same content as previous V15.6)
         prompt = f"""
         【系统角色】
         你是玄铁量化基金的 **首席宏观策略师**。
@@ -288,10 +269,10 @@ class NewsAnalyst:
         """
         
         payload = {
-            "model": self.model_strategic, # R1
+            "model": self.model_strategic,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 3000,
-            "temperature": 0.4 # 允许非线性推理
+            "temperature": 0.4 
         }
         try:
             resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=180)
@@ -299,10 +280,9 @@ class NewsAnalyst:
             if isinstance(data, str): data = json.loads(data)
             content = data['choices'][0]['message']['content']
             
-            # 记录思维链日志
             think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL)
             if think_match:
-                logger.info(f"🧠 [策略师推演]: {think_match.group(1).strip()[:200]}...")
+                logger.info(f"🧠 [Strategist Thought]: {think_match.group(1).strip()[:200]}...")
             
             clean_content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
             return self._clean_html(clean_content)
