@@ -109,7 +109,7 @@ class TechnicalAnalyzer:
                     # 修改数据 [使用 .copy() 避免警告]
                     # 注意：如果此时是 amount 代替的 volume，预测的也是全天成交额，逻辑依然成立(同比例放大)
                     vol_idx = df.columns.get_loc('volume')
-                    df.iloc[-1, vol_idx] = float(projected_vol) 
+                    df.iloc[-1, vol_idx] = int(projected_vol) 
                     
                     logger.info(f"⚖️ [动态量能投影] 交易{trade_mins}min | 乘数x{multiplier:.2f} | Vol预测: {int(original_vol)} -> {int(projected_vol)}")
                 else:
