@@ -28,16 +28,19 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     """
     base_score = tech.get('quant_score', 50)
     
+    # [修复] 强制类型转换，防止 'int' + 'str' 崩溃
     try:
         ai_adj_int = int(ai_adj)
     except:
         logger.warning(f"⚠️ {fund_name} AI调整值类型错误 ({ai_adj}), 重置为0")
         ai_adj_int = 0
 
+    # 1. 初始计算
     tactical_score = max(0, min(100, base_score + ai_adj_int))
     action_str = "加分进攻" if ai_adj_int > 0 else ("减分防御" if ai_adj_int < 0 else "中性维持")
     logger.info(f"🧮 [算分 {fund_name}] 技术面({base_score}) + CIO修正({ai_adj_int:+d} {action_str}) = 初步分({tactical_score})")
     
+    # 2. CIO 一票否决权
     override_reason = ""
     original_score = tactical_score
     
@@ -52,6 +55,7 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     if override_reason:
         logger.warning(f"⚠️ [CIO介入 {fund_name}] 原分{original_score} -> {override_reason} -> 修正后: {tactical_score}")
 
+    # 3. 记录状态
     tech['final_score'] = tactical_score
     tech['ai_adjustment'] = ai_adj_int
     tech['valuation_desc'] = val_desc
@@ -60,11 +64,13 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     tactical_mult = 0
     reasons = []
 
+    # 4. 定档
     if tactical_score >= 85: tactical_mult = 2.0; reasons.append("战术:极强")
     elif tactical_score >= 70: tactical_mult = 1.0; reasons.append("战术:走强")
     elif tactical_score >= 60: tactical_mult = 0.5; reasons.append("战术:企稳")
     elif tactical_score <= 25: tactical_mult = -1.0; reasons.append("战术:破位")
 
+    # 5. 估值修正
     final_mult = tactical_mult
     if tactical_mult > 0:
         if val_mult < 0.5: final_mult = 0; reasons.append(f"战略:高估刹车")
@@ -76,15 +82,18 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
         if val_mult >= 1.5 and strategy_type in ['core', 'dividend']:
             final_mult = 0.5; reasons.append(f"战略:左侧定投")
 
+    # 6. 风控
     if cro_signal == "VETO":
         if final_mult > 0:
             final_mult = 0
             reasons.append(f"🛡️风控:否决买入")
     
+    # 7. 锁仓
     held_days = pos.get('held_days', 999)
     if final_mult < 0 and pos['shares'] > 0 and held_days < 7:
         final_mult = 0; reasons.append(f"规则:锁仓({held_days}天)")
 
+    # 8. 金额计算
     final_amt = 0; is_sell = False; sell_val = 0; label = "观望"
     if final_mult > 0:
         amt = int(base_amt * final_mult)
@@ -101,17 +110,41 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
 
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
     """
-    生成完整的 HTML 邮件报告 (视觉简洁版：只显示标题，但显示更多条数)
+    生成完整的 HTML 邮件报告 (视觉丰富版：显示前50条，含摘要渲染)
     """
     news_html = ""
-    # [关键修改] 
-    # 1. 列表切片改为 [:50]，显示更多新闻
-    # 2. 移除摘要显示的逻辑，只显示 title_line，保持界面清爽
+    # [UI 恢复] 
+    # 1. 列表切片为 [:50]
+    # 2. 恢复摘要显示逻辑：如果新闻文本中包含换行符（说明有摘要），则进行拆分渲染
     if isinstance(all_news, list):
         for i, news in enumerate(all_news[:50]): 
-            # 无论新闻里有没有摘要，我们只取第一行（标题行）显示
-            raw_text = str(news).split('\n')[0] 
-            news_html += f"""<div style="font-size:11px;color:#ccc;margin-bottom:5px;border-bottom:1px dashed #333;padding-bottom:3px;"><span style="color:#ffb74d;margin-right:4px;">●</span>{raw_text}</div>"""
+            raw_text = str(news)
+            
+            # 检测是否有摘要 (由 news_analyst.py 拼接的 \n >>> )
+            if "\n" in raw_text:
+                parts = raw_text.split("\n", 1)
+                title_line = parts[0]
+                # 去掉前缀，提取纯内容
+                summary = parts[1].replace(">>> 内容:", "").strip()
+                
+                # [Rich UI] 标题亮色，摘要灰色，增加间距
+                news_html += f"""
+                <div style="margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:6px;">
+                    <div style="font-size:11px;color:#eee;font-weight:500;">
+                        <span style="color:#ffb74d;margin-right:4px;">●</span>{title_line}
+                    </div>
+                    <div style="font-size:10px;color:#888;margin-left:14px;margin-top:3px;line-height:1.4;">
+                        {summary}
+                    </div>
+                </div>
+                """
+            else:
+                # 只有标题的情况
+                news_html += f"""
+                <div style="font-size:11px;color:#ccc;margin-bottom:6px;border-bottom:1px dashed #333;padding-bottom:4px;">
+                    <span style="color:#ffb74d;margin-right:4px;">●</span>{raw_text}
+                </div>
+                """
     
     def render_dots(hist):
         h = ""
