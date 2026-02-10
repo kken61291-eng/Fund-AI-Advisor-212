@@ -1,3 +1,14 @@
+没问题。为了让“买入”、“卖出”和“观望”在移动端报告中一眼即识，我对 `render_html_report_v13` 函数中的 **操作标签渲染逻辑** 进行了视觉增强。
+
+现在，不同的操作会有独立的 **背景色卡片** 和 **Emoji 图标** 区分：
+
+* **买入**：红色高亮背景 + ⚡ 图标 + 金额。
+* **卖出**：绿色高亮背景 + 💰 图标 + 金额。
+* **观望**：灰色低调背景 + ☕ 图标。
+
+以下是修改后的完整全量代码：
+
+```python
 import yaml
 import os
 import threading
@@ -166,8 +177,47 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             p_color = COLOR_RED if p_val > 0 else COLOR_GREEN 
             profit_html = f"""<div style="font-size:12px;margin-bottom:8px;background:rgba(0,0,0,0.2);padding:4px 8px;border-radius:3px;display:flex;justify-content:space-between;border:1px solid #333;"><span style="color:{COLOR_TEXT_SUB};">持有盈亏:</span><span style="color:{p_color};font-weight:bold;">{p_val:+.1f}元</span></div>"""
         
-        # 操作标签
-        act_html = f"<span style='color:{COLOR_RED};font-weight:bold'>+{r['amount']:,}</span>" if r['amount'] > 0 else (f"<span style='color:{COLOR_GREEN};font-weight:bold'>-{int(r.get('sell_value',0)):,}</span>" if r.get('is_sell') else "HOLD")
+        # --- [修改处] 操作标签视觉优化 ---
+        act_bg = ""
+        act_border = ""
+        act_text = ""
+        act_content = ""
+        
+        if r['amount'] > 0:
+            # 买入样式
+            act_bg = "rgba(250, 82, 82, 0.15)"
+            act_border = COLOR_RED
+            act_text = COLOR_RED
+            act_content = f"⚡ 买入 {r['amount']:,}"
+        elif r.get('is_sell'):
+            # 卖出样式
+            act_bg = "rgba(81, 207, 102, 0.15)"
+            act_border = COLOR_GREEN
+            act_text = COLOR_GREEN
+            act_content = f"💰 卖出 {int(r.get('sell_value',0)):,}"
+        else:
+            # 观望样式
+            act_bg = "rgba(255, 255, 255, 0.05)"
+            act_border = "#495057"
+            act_text = COLOR_TEXT_SUB
+            act_content = "☕ 观望"
+
+        # 组装增强版操作徽章
+        act_html = f"""
+        <span style="
+            display:inline-block;
+            background:{act_bg};
+            color:{act_text};
+            border:1px solid {act_border};
+            padding:3px 10px;
+            font-size:13px;
+            font-weight:bold;
+            border-radius:4px;
+            min-width:60px;
+            text-align:center;
+        ">{act_content}</span>
+        """
+        # --- [修改结束] ---
         
         # 理由标签
         reasons = " ".join([f"<span style='border:1px solid #444;background:rgba(255,255,255,0.05);padding:1px 4px;font-size:9px;border-radius:3px;color:{COLOR_TEXT_SUB};margin-right:3px;'>{x}</span>" for x in tech.get('quant_reasons', [])])
@@ -199,14 +249,13 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             </div>"""
 
         rows += f"""<div class="card" style="border-left:3px solid {COLOR_GOLD};">
-            <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px;align-items:center;">
                 <span style="font-size:16px;font-weight:bold;color:{COLOR_TEXT_MAIN};">{r['name']}</span>
-                <span style="color:{COLOR_GOLD};font-weight:bold;font-size:18px;">{final_score}</span>
+                {act_html}
             </div>
-            <div style="font-size:11px;color:{cro_style};margin-bottom:8px;">🛡️ {cro_comment}</div>
-            <div style="display:flex;justify-content:space-between;font-size:14px;border-bottom:1px solid #333;padding-bottom:5px;margin-bottom:8px;">
-                <span style="color:{COLOR_TEXT_SUB};">{r.get('position_type')}</span>
-                <span>{act_html}</span>
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                 <span style="color:{COLOR_GOLD};font-weight:bold;font-size:18px;">{final_score}分</span>
+                 <div style="font-size:11px;color:{cro_style};padding-top:4px;">🛡️ {cro_comment}</div>
             </div>
             {profit_html}
             <div class="tech-grid">
@@ -407,6 +456,8 @@ def main():
         # 渲染邮件 (传入完整的新闻列表)
         html = render_html_report_v13(all_news_seen, results, cio_html, advisor_html) 
         
-        send_email("🐦 鹊知风 V15.20 移动决议", html, attachment_path=LOG_FILENAME)
+        send_email("🕊️ 鹊知风 V15.20 洞察微澜，御风而行", html, attachment_path=LOG_FILENAME)
 
 if __name__ == "__main__": main()
+
+```
