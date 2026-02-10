@@ -12,7 +12,7 @@ class NewsAnalyst:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.base_url = os.getenv("LLM_BASE_URL")
-        # 战术执行 (快思考): V3.2 - 负责 CGO/CRO/CIO 实时信号
+        # 战术执行 (快思考): V3.2 - 负责 CGO/CRO/CIO 实时信号 (无RAG)
         self.model_tactical = "Pro/deepseek-ai/DeepSeek-V3.2"      
         # 战略推理 (慢思考): R1 - 负责 宏观策略/复盘审计
         self.model_strategic = "Pro/deepseek-ai/DeepSeek-R1"  
@@ -22,7 +22,7 @@ class NewsAnalyst:
             "Content-Type": "application/json"
         }
         
-        # [RAG] 加载板块实战经验库
+        # [RAG] 加载板块实战经验库 (仅供 CIO 使用)
         self.knowledge_base = self._load_knowledge_base()
 
     def _load_knowledge_base(self):
@@ -38,16 +38,16 @@ class NewsAnalyst:
 
     def _fetch_live_patch(self):
         """
-        [7x24全球财经电报] - 暴力抓取模式
+        [7x24全球财经电报]
         """
         try:
             time.sleep(1)
-            # 使用电报接口，获取含摘要的实时新闻
+            # 使用电报接口
             df = ak.stock_telegraph_em()
             news = []
             
-            # 放开数量限制，尽量多抓，后续靠 Token 排序截断
-            for i in range(min(200, len(df))):
+            # 抓取 100 条作为候选池
+            for i in range(min(100, len(df))):
                 title = str(df.iloc[i].get('title') or '')
                 content = str(df.iloc[i].get('content') or '')
                 t = str(df.iloc[i].get('public_time') or '')
@@ -56,7 +56,7 @@ class NewsAnalyst:
                 # 宽松过滤
                 if self._is_valid_news(title):
                     item_str = f"[{t}] {title}"
-                    # [关键] 拼入内容供 AI 读取
+                    # [关键] 拼入内容供 AI 读取，但在 main.py 中会被过滤掉不显示
                     if len(content) > 10 and content != title:
                         item_str += f"\n   (摘要: {content[:300]})"
                     news.append(item_str)
@@ -77,18 +77,18 @@ class NewsAnalyst:
 
     def get_market_context(self, max_length=35000): 
         """
-        [核心逻辑升级] 收集 -> 去重 -> 排序 -> 截断
+        [核心逻辑] 收集 -> 去重 -> 排序 -> 截断
         """
         news_candidates = []
         today_str = get_beijing_time().strftime("%Y-%m-%d")
         file_path = f"data_news/news_{today_str}.jsonl"
         
-        # 1. 读取实时电报
+        # 1. 优先读取实时电报
         live_news = self._fetch_live_patch()
         if live_news:
             news_candidates.extend(live_news)
             
-        # 2. 读取本地缓存
+        # 2. 补充本地缓存的历史新闻
         if os.path.exists(file_path):
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -104,6 +104,7 @@ class NewsAnalyst:
                             content = str(item.get('content') or item.get('digest') or "")
                             
                             news_entry = f"[{t_str}] {title}"
+                            # 本地新闻也把内容加回来，供 AI "暗中观察"
                             if len(content) > 10:
                                 news_entry += f"\n   (摘要: {content[:300]})"
                                 
@@ -116,17 +117,17 @@ class NewsAnalyst:
         unique_news = []
         seen = set()
         for n in news_candidates:
+            # 只用标题部分去重 (第一行)
             title_part = n.split('\n')[0]
             if title_part not in seen:
                 seen.add(title_part)
                 unique_news.append(n)
         
-        # 4. [关键修复] 强制按时间戳倒序排序
-        # 格式为 "[MM-DD HH:MM] ..."，字符串排序即可满足同一年内的倒序需求
+        # 4. [关键] 强制按时间戳倒序排序
         try:
             unique_news.sort(key=lambda x: x[:17], reverse=True)
         except:
-            pass # 如果格式异常，保持原序
+            pass 
         
         # 5. 按长度截断
         final_list = []
@@ -138,8 +139,9 @@ class NewsAnalyst:
                 final_list.append(news_item)
                 current_len += item_len + 1 
             else:
-                break # 满了就停，丢弃的一定是最旧的
+                break
         
+        # 使用换行符连接
         final_text = "\n".join(final_list)
         
         return final_text if final_text else "今日暂无重大新闻。"
@@ -165,31 +167,28 @@ class NewsAnalyst:
     @retry(retries=1, delay=2)
     def analyze_fund_v5(self, fund_name, tech, macro, news, risk, strategy_type="core"):
         """
-        [战术层] 联邦投委会辩论系统 (V3.2) - RAG 增强版
+        [战术层] 联邦投委会 (V3.2) - 纯反应 (无RAG)
         """
-        kb_data = self.knowledge_base.get(strategy_type, {})
-        expert_rules = "\n".join([f"- {r}" for r in kb_data.get('rules', [])])
-        if not expert_rules: expert_rules = "- 无特殊经验，按常规逻辑分析。"
-
         fuse_level = risk['fuse_level']
         fuse_msg = risk['risk_msg']
         trend_score = tech.get('quant_score', 50)
         
+        # 投委会看不到 'expert_rules'
+        
         prompt = f"""
-        【系统架构】鹊知风投委会 | RAG增强模式
+        【系统架构】鹊知风投委会 | 战术执行层
         
         【标的信息】
-        标的: {fund_name} (策略类型: {strategy_type})
+        标的: {fund_name}
         趋势强度: {trend_score}/100 | 熔断状态: Level{fuse_level} | 硬约束: {fuse_msg}
         技术指标: RSI={tech.get('rsi',50)} | MACD={tech.get('macd',{}).get('trend','-')}
         
-        【💀 鹊知风实战经验库】
-        {expert_rules}
-        
-        【舆情扫描 (按时间倒序优先)】
+        【舆情扫描 (含详细摘要)】
         {str(news)[:25000]}
 
         【任务】
+        作为一线交易员，根据技术指标和当前新闻做出直觉判断。
+        严格遵守技术纪律，不要臆测未知的宏观规则。
         输出严格JSON，不要Markdown。Adjustment为整数。
 
         【输出格式】
@@ -236,22 +235,59 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=5)
     def review_report(self, report_text, macro_str):
+        """
+        [战略层] CIO 复盘 (R1) - 唯一拥有 RAG 权限的角色
+        """
         current_date = datetime.now().strftime("%Y年%m月%d日")
+        
+        # [关键] 注入 RAG
+        rag_knowledge = json.dumps(self.knowledge_base, ensure_ascii=False, indent=2)
+        
         prompt = f"""
         【系统角色】鹊知风CIO | 机构级复盘备忘录 | 日期: {current_date}
-        【输入数据】宏观: {macro_str[:2500]} | 交易: {report_text[:3000]}
-        【任务】1.精确归因 2.策略适配评估
+        
+        【绝密档案：鹊知风实战经验库 (RAG)】
+        (这是只有你持有的核心策略，投委会和顾问都不知道)
+        {rag_knowledge}
+        
+        【输入数据】
+        宏观环境: {macro_str[:2500]} | 交易明细: {report_text[:3000]}
+        
+        【任务】
+        1. 站在上帝视角，点评投委会的决策。
+        2. 如果投委会犯了错（比如不懂RAG里的逆向逻辑），请明确指出并修正。
+        3. 评估策略适配度。
+        
         【输出】HTML格式CIO备忘录。
         """
         return self._call_r1(prompt)
 
     @retry(retries=2, delay=5)
     def advisor_review(self, report_text, macro_str):
+        """
+        [审计层] Red Team 顾问 (R1) - 盲审 (无RAG)
+        """
         current_date = datetime.now().strftime("%Y年%m月%d日")
+        
+        # [关键修改] 移除了 RAG 注入。顾问现在只看数据，不看策略书。
+        
         prompt = f"""
         【系统角色】鹊知风Red Team | 独立审计顾问 | 日期: {current_date}
-        【输入数据】宏观: {macro_str[:2500]} | 交易: {report_text[:3000]}
-        【任务】五问压力测试
+        
+        【输入数据】
+        宏观: {macro_str[:2500]} | 交易: {report_text[:3000]}
+        
+        【任务】
+        作为独立的第三方风控，请基于“数据”和“逻辑”对交易结果进行压力测试。
+        你不知道任何“内幕策略”或“经验库”，你只相信眼前的风险指标。
+        
+        【五问压力测试】
+        Q1: 确认偏误检测?
+        Q2: 归因谬误检测?
+        Q3: 宏观错配检测?
+        Q4: 流动性幻觉检测?
+        Q5: 尾部风险盲区?
+        
         【输出】HTML格式审计报告。
         """
         return self._call_r1(prompt)
