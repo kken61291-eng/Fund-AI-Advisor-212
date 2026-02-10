@@ -2,7 +2,7 @@ name: Daily Data Crawler
 
 on:
   schedule:
-    # 每小时第 0 分钟运行 (抓取数据)
+    # 每小时第 0 分钟运行
     - cron: '0 * * * *'
   workflow_dispatch:
 
@@ -26,24 +26,40 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
-        # [关键] 强制升级 akshare 到最新版，防止 7x24 接口失效
+        # [强制升级] 确保 akshare 是最新版，防止接口报错
         pip install --upgrade akshare
 
+    # ----------------------------------------------------------------
+    # 步骤 1: 抓取 7x24 全球财经电报 (News)
+    # ----------------------------------------------------------------
     - name: 🕷️ Run News Crawler
       run: |
         python news_loader.py
 
+    # ----------------------------------------------------------------
+    # 步骤 2: 抓取 基金交易/行情数据 (Market)
+    # 使用 V15.14 的 data_fetcher.py 主入口逻辑
+    # ----------------------------------------------------------------
+    - name: 📈 Run Market Data Fetcher
+      run: |
+        python data_fetcher.py
+
+    # ----------------------------------------------------------------
+    # 步骤 3: 提交并保存数据
+    # ----------------------------------------------------------------
     - name: 💾 Commit and Push Data
       run: |
         git config --global user.name "GitHub Action"
         git config --global user.email "action@github.com"
         
-        # 添加 data_news 目录下的所有变动
+        # 添加新闻目录
         git add data_news/
+        # 添加行情目录 (data_fetcher.py 默认保存到 data_market)
+        git add data_market/ || true
         
-        # 检查是否有文件变化，有则提交，无则跳过
-        if [[ -n $(git status --porcelain data_news/) ]]; then
-          git commit -m "📡 Auto-update news data [skip ci]"
+        # 检查变动并提交
+        if [[ -n $(git status --porcelain) ]]; then
+          git commit -m "📡 Auto-update News & Market data [skip ci]"
           git push
         else
           echo "No new data found, skipping commit."
