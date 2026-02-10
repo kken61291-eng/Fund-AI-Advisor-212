@@ -2,8 +2,8 @@ name: Data Crawler (Batch Updater)
 
 on:
   schedule:
-    # 北京时间 08:30 - 15:30 每小时爬取一次
-    - cron: '30 0-7 * * 1-5'
+    # [核心修改] 每小时执行一次 (0分时刻)，覆盖全球市场(美股/港股/期货)交易时段
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 concurrency: 
@@ -33,7 +33,7 @@ jobs:
 
     - name: 🕷️ Run Market Data Crawler
       env:
-        # 如果爬虫需要 Tushare，请保留这个，不需要邮件变量
+        # 如果爬虫需要 Tushare，请保留这个
         TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       run: |
         python batch_updater.py
@@ -47,6 +47,7 @@ jobs:
         git config --global user.name "GitHub Action"
         git config --global user.email "action@github.com"
         
+        # 检查 data_cache (行情) 和 data_news (新闻) 是否有变化
         if [[ -n $(git status --porcelain data_cache/ data_news/) ]]; then
           git add data_cache/*.csv
           git add data_news/*.jsonl
