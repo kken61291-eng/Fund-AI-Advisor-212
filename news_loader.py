@@ -5,14 +5,20 @@ import time
 import pandas as pd
 from datetime import datetime
 import hashlib
+import pytz # [关键] 引入时区库
 
 # --- 配置 ---
 DATA_DIR = "data_news"
 if not os.path.exists(DATA_DIR):
-    os.makedirs(self.DATA_DIR)
+    os.makedirs(DATA_DIR)
+
+def get_beijing_time():
+    """[关键修复] 获取北京时间，确保与 news_analyst 读取逻辑一致"""
+    return datetime.now(pytz.timezone('Asia/Shanghai'))
 
 def get_today_str():
-    return datetime.now().strftime("%Y-%m-%d")
+    """使用北京时间生成日期字符串"""
+    return get_beijing_time().strftime("%Y-%m-%d")
 
 def generate_news_id(item):
     """生成新闻唯一指纹，防止重复"""
@@ -34,7 +40,8 @@ def clean_time_str(t_str):
         return str(t_str)
 
 def fetch_and_save_news():
-    print(f"📡 [NewsLoader] 启动双源抓取 (EastMoney + CLS) - {get_today_str()}...")
+    today_date = get_today_str()
+    print(f"📡 [NewsLoader] 启动双源抓取 (EastMoney + CLS) - {today_date} (Beijing Time)...")
     
     all_news_items = []
 
@@ -98,7 +105,8 @@ def fetch_and_save_news():
         print("⚠️ 未获取到任何新闻数据")
         return
 
-    today_file = os.path.join(DATA_DIR, f"news_{get_today_str()}.jsonl")
+    # [关键] 确保文件名使用的是北京时间
+    today_file = os.path.join(DATA_DIR, f"news_{today_date}.jsonl")
     
     # 读取已存 ID
     existing_ids = set()
@@ -113,8 +121,7 @@ def fetch_and_save_news():
 
     # 写入新数据
     new_count = 0
-    # 按时间倒序排列（最新的在前），但写入时我们追加，所以顺序不严格影响逻辑，关键是ID去重
-    # 这里简单按时间排序一下，方便查看
+    # 按时间倒序排列（最新的在前）
     all_news_items.sort(key=lambda x: x['time'], reverse=True)
 
     with open(today_file, 'a', encoding='utf-8') as f:
@@ -127,7 +134,7 @@ def fetch_and_save_news():
                 existing_ids.add(item_id)
                 new_count += 1
     
-    print(f"✅ 入库完成: 新增 {new_count} 条 | 总存量 {len(existing_ids)} 条 | 来源: EastMoney & CLS")
+    print(f"✅ 入库完成: 新增 {new_count} 条 | 总存量 {len(existing_ids)} 条 | 目标文件: {today_file}")
 
 if __name__ == "__main__":
     fetch_and_save_news()
