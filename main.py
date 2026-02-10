@@ -28,7 +28,6 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     """
     base_score = tech.get('quant_score', 50)
     
-    # [修复] 强制类型转换，防止 'int' + 'str' 崩溃
     try:
         ai_adj_int = int(ai_adj)
     except:
@@ -111,10 +110,19 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
 
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
     """
-    生成完整的 HTML 邮件报告 (带图片LOGO + 深色表格修复)
+    生成完整的 HTML 邮件报告 (V15.17 UI优化版：深邃金融风格)
     """
+    # --- 主色调定义 ---
+    COLOR_GOLD = "#fab005" # 更具质感的琥珀金
+    COLOR_RED = "#fa5252"  # 更现代的红色
+    COLOR_GREEN = "#51cf66" # 更清透的绿色
+    COLOR_TEXT_MAIN = "#e9ecef"
+    COLOR_TEXT_SUB = "#adb5bd"
+    COLOR_BG_MAIN = "#0f1215" # 深岩灰背景
+    COLOR_BG_CARD = "#16191d" # 卡片背景
+    COLOR_BORDER = "#2c3e50"  # 深蓝灰色边框
+
     news_html = ""
-    # [UI 逻辑] 只显示标题行
     if isinstance(all_news, list):
         for i, news in enumerate(all_news):
             if isinstance(news, dict):
@@ -130,14 +138,15 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
                     title = raw_text
                     time_str = ""
             
-            # 经典列表样式
-            news_html += f"""<div style="font-size:11px;color:#ccc;margin-bottom:5px;border-bottom:1px dashed #333;padding-bottom:3px;"><span style="color:#ffb74d;margin-right:4px;">●</span>{title}<span style="float:right;color:#666;font-size:10px;">{time_str}</span></div>"""
+            # 新闻列表样式微调：颜色更柔和，边框更细
+            news_html += f"""<div style="font-size:11px;color:{COLOR_TEXT_SUB};margin-bottom:5px;border-bottom:1px solid #25282c;padding-bottom:3px;"><span style="color:{COLOR_GOLD};margin-right:4px;">●</span>{title}<span style="float:right;color:#666;font-size:10px;">{time_str}</span></div>"""
     
     def render_dots(hist):
         h = ""
         for x in hist:
-            c = "#d32f2f" if x['s']=='B' else ("#388e3c" if x['s'] in ['S','C'] else "#555")
-            h += f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:{c};margin-right:3px;" title="{x["date"]}"></span>'
+            # 历史点颜色优化
+            c = COLOR_RED if x['s']=='B' else (COLOR_GREEN if x['s'] in ['S','C'] else "#444")
+            h += f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:{c};margin-right:3px;box-shadow:0 0 4px {c}66;" title="{x["date"]}"></span>'
         return h
 
     rows = ""
@@ -151,13 +160,15 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             cro_signal = tech.get('tech_cro_signal', 'PASS')
             cro_comment = tech.get('tech_cro_comment', '无')
             
-            cro_style = "color:#66bb6a;font-weight:bold;"
-            cro_border_color = '#66bb6a'
+            # 风控颜色优化
+            cro_style = f"color:{COLOR_GREEN};font-weight:bold;"
+            cro_border_color = COLOR_GREEN
             if cro_signal == "VETO": 
-                cro_style = "color:#ef5350;font-weight:bold;"
-                cro_border_color = '#ef5350'
+                cro_style = f"color:{COLOR_RED};font-weight:bold;"
+                cro_border_color = COLOR_RED
             elif cro_signal == "WARN": 
-                cro_style = "color:#ffb74d;font-weight:bold;"
+                cro_style = f"color:{COLOR_GOLD};font-weight:bold;"
+                cro_border_color = COLOR_GOLD
             
             obv_text = '流入' if tech.get('flow',{}).get('obv_slope',0) > 0 else '流出'
             
@@ -169,25 +180,30 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             if pos_shares > 0 and pos_cost > 0 and current_price > 0:
                 profit_pct = (current_price - pos_cost) / pos_cost * 100
                 profit_val = (current_price - pos_cost) * pos_shares
-                p_color = "#ff5252" if profit_val > 0 else "#69f0ae" 
-                profit_html = f"""<div style="font-size:12px;margin-bottom:8px;background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:3px;display:flex;justify-content:space-between;"><span style="color:#aaa;">持有收益:</span><span style="color:{p_color};font-weight:bold;">{profit_val:+.1f}元 ({profit_pct:+.2f}%)</span></div>"""
+                p_color = COLOR_RED if profit_val > 0 else COLOR_GREEN 
+                profit_html = f"""<div style="font-size:12px;margin-bottom:8px;background:rgba(0,0,0,0.2);padding:4px 8px;border-radius:3px;display:flex;justify-content:space-between;border:1px solid #333;"><span style="color:{COLOR_TEXT_SUB};">持有收益:</span><span style="color:{p_color};font-weight:bold;">{profit_val:+.1f}元 ({profit_pct:+.2f}%)</span></div>"""
             
+            # [核心优化] 卡片样式重构：移除大面积背景色，改用边框和光晕
             if r['amount'] > 0: 
-                border_color = "#d32f2f"
-                bg_gradient = "linear-gradient(90deg, rgba(60,10,10,0.9) 0%, rgba(20,20,20,0.95) 100%)"
-                act_html = f"<span style='color:#ff8a80;font-weight:bold'>+{r['amount']:,}</span>"
+                border_color = COLOR_RED
+                # 使用微弱的红色光晕代替背景
+                card_shadow = f"0 4px 15px rgba(0,0,0,0.5), 0 0 20px {COLOR_RED}22"
+                act_html = f"<span style='color:{COLOR_RED};font-weight:bold'>+{r['amount']:,}</span>"
             elif r.get('is_sell'): 
-                border_color = "#388e3c"
-                bg_gradient = "linear-gradient(90deg, rgba(10,40,10,0.9) 0%, rgba(20,20,20,0.95) 100%)"
-                act_html = f"<span style='color:#a5d6a7;font-weight:bold'>-{int(r.get('sell_value',0)):,}</span>"
+                border_color = COLOR_GREEN
+                # 使用微弱的绿色光晕
+                card_shadow = f"0 4px 15px rgba(0,0,0,0.5), 0 0 20px {COLOR_GREEN}22"
+                act_html = f"<span style='color:{COLOR_GREEN};font-weight:bold'>-{int(r.get('sell_value',0)):,}</span>"
             else: 
-                border_color = "#555"
-                bg_gradient = "linear-gradient(90deg, rgba(30,30,30,0.9) 0%, rgba(15,15,15,0.95) 100%)"
-                act_html = "<span style='color:#777'>HOLD</span>"
+                border_color = "#444"
+                # 中性灰色光晕
+                card_shadow = "0 4px 15px rgba(0,0,0,0.5), 0 0 10px rgba(255,255,255,0.05)"
+                act_html = f"<span style='color:{COLOR_TEXT_SUB}'>HOLD</span>"
             
-            reasons = " ".join([f"<span style='border:1px solid #555;padding:0 3px;font-size:9px;border-radius:2px;color:#888;'>{x}</span>" for x in tech.get('quant_reasons', [])])
+            # 标签样式优化
+            reasons = " ".join([f"<span style='border:1px solid #444;background:rgba(255,255,255,0.05);padding:1px 4px;font-size:9px;border-radius:3px;color:{COLOR_TEXT_SUB};'>{x}</span>" for x in tech.get('quant_reasons', [])])
             val_desc = tech.get('valuation_desc', 'N/A')
-            val_style = "color:#ffb74d;font-weight:bold;" if "低估" in val_desc else ("color:#ef5350;font-weight:bold;" if "高估" in val_desc else "color:#bdbdbd;")
+            val_style = f"color:{COLOR_GOLD};font-weight:bold;" if "低估" in val_desc else (f"color:{COLOR_RED};font-weight:bold;" if "高估" in val_desc else f"color:{COLOR_TEXT_SUB};")
             
             committee_html = ""
             ai_data = r.get('ai_analysis', {})
@@ -196,53 +212,51 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             chairman = ai_data.get('chairman_conclusion') or ai_data.get('comment', '无')
             
             if bull_say != '无':
-                adj_color = "#ff5252" if ai_adj > 0 else ("#69f0ae" if ai_adj < 0 else "#ccc")
-                committee_html = f"""<div style="margin-top:12px;border-top:1px solid #444;padding-top:10px;"><div style="font-size:10px;color:#888;margin-bottom:6px;text-align:center;">--- 联邦投委会辩论 ---</div><div style="display:flex;gap:10px;margin-bottom:8px;"><div style="flex:1;background:rgba(27,94,32,0.2);padding:8px;border-radius:4px;border-left:2px solid #66bb6a;"><div style="color:#66bb6a;font-size:11px;font-weight:bold;margin-bottom:4px;">🦊 CGO (增长)</div><div style="color:#c8e6c9;font-size:11px;line-height:1.3;font-style:italic;">"{bull_say}"</div></div><div style="flex:1;background:rgba(183,28,28,0.2);padding:8px;border-radius:4px;border-left:2px solid #ef5350;"><div style="color:#ef5350;font-size:11px;font-weight:bold;margin-bottom:4px;">🐻 CRO (风控)</div><div style="color:#ffcdd2;font-size:11px;line-height:1.3;font-style:italic;">"{bear_say}"</div></div></div><div style="background:linear-gradient(90deg, rgba(255,183,77,0.1) 0%, rgba(255,183,77,0.05) 100%);padding:10px;border-radius:4px;border:1px solid rgba(255,183,77,0.3);position:relative;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><div style="color:#ffb74d;font-size:12px;font-weight:bold;">⚖️ CIO 终审</div><div style="color:{adj_color};font-size:11px;font-weight:bold;">策略修正: {ai_adj:+d}</div></div><div style="color:#fff3e0;font-size:12px;line-height:1.4;">{chairman}</div></div></div>"""
+                adj_color = COLOR_RED if ai_adj > 0 else (COLOR_GREEN if ai_adj < 0 else COLOR_TEXT_SUB)
+                # 投委会样式优化：更深邃的背景，更细的边框
+                committee_html = f"""<div style="margin-top:12px;border-top:1px solid #333;padding-top:10px;"><div style="font-size:10px;color:{COLOR_TEXT_SUB};margin-bottom:6px;text-align:center;letter-spacing:1px;">--- 联邦投委会辩论 ---</div><div style="display:flex;gap:10px;margin-bottom:8px;"><div style="flex:1;background:rgba(81, 207, 102, 0.1);padding:8px;border-radius:4px;border-left:2px solid {COLOR_GREEN};"><div style="color:{COLOR_GREEN};font-size:11px;font-weight:bold;margin-bottom:4px;">🦊 CGO (增长)</div><div style="color:#c0ebc9;font-size:11px;line-height:1.3;font-style:italic;">"{bull_say}"</div></div><div style="flex:1;background:rgba(250, 82, 82, 0.1);padding:8px;border-radius:4px;border-left:2px solid {COLOR_RED};"><div style="color:{COLOR_RED};font-size:11px;font-weight:bold;margin-bottom:4px;">🐻 CRO (风控)</div><div style="color:#ffc9c9;font-size:11px;line-height:1.3;font-style:italic;">"{bear_say}"</div></div></div><div style="background:rgba(250, 176, 5, 0.05);padding:10px;border-radius:4px;border:1px solid rgba(250, 176, 5, 0.2);position:relative;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><div style="color:{COLOR_GOLD};font-size:12px;font-weight:bold;">⚖️ CIO 终审</div><div style="color:{adj_color};font-size:11px;font-weight:bold;">策略修正: {ai_adj:+d}</div></div><div style="color:{COLOR_TEXT_MAIN};font-size:12px;line-height:1.4;">{chairman}</div></div></div>"""
             
             vol_ratio = risk.get('vol_ratio', 1.0)
-            vol_style = "color:#ffb74d;" if vol_ratio < 0.8 else ("color:#ff8a80;" if vol_ratio > 2.0 else "color:#bbb;")
+            vol_style = f"color:{COLOR_GOLD};" if vol_ratio < 0.8 else (f"color:{COLOR_RED};" if vol_ratio > 2.0 else "color:#777;")
             
-            rows += f"""<div style="background:{bg_gradient};border-left:4px solid {border_color};margin-bottom:15px;padding:15px;border-radius:6px;box-shadow:0 4px 10px rgba(0,0,0,0.6);border-top:1px solid #333;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div><span style="font-size:18px;font-weight:bold;color:#f0e6d2;font-family:'Times New Roman',serif;">{r['name']}</span><span style="font-size:12px;color:#9ca3af;margin-left:5px;">{r['code']}</span></div><div style="text-align:right;"><div style="color:#ffb74d;font-weight:bold;font-size:16px;text-shadow:0 0 5px rgba(255,183,77,0.3);">{final_score}</div><div style="font-size:9px;color:#aaa;">BASE:{base_score} <span style="color:{'#ff5252' if ai_adj>0 else ('#69f0ae' if ai_adj<0 else '#777')}">{ai_adj:+d}</span></div></div></div><div style="background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:4px;margin-bottom:10px;display:flex;align-items:center;border-left:2px solid {cro_border_color};"><span style="font-size:11px;color:#aaa;margin-right:8px;">🛡️ 技术风控:</span><span style="font-size:11px;{cro_style}">{cro_comment}</span></div><div style="display:flex;justify-content:space-between;color:#e0e0e0;font-size:15px;margin-bottom:5px;border-bottom:1px solid #444;padding-bottom:5px;"><span style="font-weight:bold;color:#ffb74d;">{r.get('position_type')}</span><span style="font-family:'Courier New',monospace;">{act_html}</span></div>{profit_html}<div style="font-size:11px;margin-bottom:8px;border-bottom:1px dashed #333;padding-bottom:5px;"><span style="color:#888;">周期定位:</span> <span style="{val_style}">{val_desc}</span></div><div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:5px;font-size:11px;color:#bdbdbd;font-family:'Courier New',monospace;margin-bottom:4px;"><span>RSI: {tech.get('rsi','-')}</span><span>MACD: {tech.get('macd',{}).get('trend','-')}</span><span>OBV: {obv_text}</span><span>Wkly: {tech.get('trend_weekly','-')}</span></div><div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;font-size:11px;color:#bdbdbd;font-family:'Courier New',monospace;margin-bottom:8px;"><span style="{vol_style}">VR: {vol_ratio}</span><span>Div: {risk.get('divergence','无')}</span><span>%B: {risk.get('bollinger_pct_b',0.5)}</span></div><div style="margin-bottom:8px;">{reasons}</div><div style="margin-top:5px;">{render_dots(r.get('history',[]))}</div>{committee_html}</div>"""
+            # [核心优化] 卡片容器：统一深色背景 + 3px 左边框 + 呼吸光晕
+            rows += f"""<div style="background:{COLOR_BG_CARD};border-left:3px solid {border_color};margin-bottom:15px;padding:15px;border-radius:4px;box-shadow:{card_shadow};border-top:1px solid #222;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div><span style="font-size:18px;font-weight:bold;color:{COLOR_TEXT_MAIN};font-family:'Times New Roman',serif;letter-spacing:0.5px;">{r['name']}</span><span style="font-size:12px;color:{COLOR_TEXT_SUB};margin-left:5px;">{r['code']}</span></div><div style="text-align:right;"><div style="color:{COLOR_GOLD};font-weight:bold;font-size:18px;text-shadow:0 0 10px {COLOR_GOLD}44;">{final_score}</div><div style="font-size:9px;color:{COLOR_TEXT_SUB};">BASE:{base_score} <span style="color:{COLOR_RED if ai_adj>0 else (COLOR_GREEN if ai_adj<0 else COLOR_TEXT_SUB)}">{ai_adj:+d}</span></div></div></div><div style="background:rgba(0,0,0,0.3);padding:4px 8px;border-radius:4px;margin-bottom:10px;display:flex;align-items:center;border-left:2px solid {cro_border_color};"><span style="font-size:11px;color:{COLOR_TEXT_SUB};margin-right:8px;">🛡️ 技术风控:</span><span style="font-size:11px;{cro_style}">{cro_comment}</span></div><div style="display:flex;justify-content:space-between;color:{COLOR_TEXT_MAIN};font-size:15px;margin-bottom:5px;border-bottom:1px solid #333;padding-bottom:5px;"><span style="font-weight:bold;color:{COLOR_GOLD};">{r.get('position_type')}</span><span style="font-family:'Courier New',monospace;">{act_html}</span></div>{profit_html}<div style="font-size:11px;margin-bottom:8px;border-bottom:1px dashed #333;padding-bottom:5px;"><span style="color:{COLOR_TEXT_SUB};">周期定位:</span> <span style="{val_style}">{val_desc}</span></div><div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:5px;font-size:11px;color:{COLOR_TEXT_SUB};font-family:'Courier New',monospace;margin-bottom:4px;"><span>RSI: {tech.get('rsi','-')}</span><span>MACD: {tech.get('macd',{}).get('trend','-')}</span><span>OBV: {obv_text}</span><span>Wkly: {tech.get('trend_weekly','-')}</span></div><div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;font-size:11px;color:{COLOR_TEXT_SUB};font-family:'Courier New',monospace;margin-bottom:8px;"><span style="{vol_style}">VR: {vol_ratio}</span><span>Div: {risk.get('divergence','无')}</span><span>%B: {risk.get('bollinger_pct_b',0.5)}</span></div><div style="margin-bottom:8px;">{reasons}</div><div style="margin-top:5px;">{render_dots(r.get('history',[]))}</div>{committee_html}</div>"""
         except Exception as e:
             logger.error(f"Render Error {r.get('name')}: {e}")
     
-    # [Logo 替换] 将之前的文字标题替换为图片
-    # 注意：请务必将 logo.png 上传到 GitHub 仓库根目录
     logo_url = "https://raw.githubusercontent.com/kken61291-eng/Fund-AI-Advisor/main/logo.png"
     
-    # [关键 CSS 修改]
-    # 1. .logo-img: width: 100%; height: auto; object-fit: contain; (自适应宽度)
-    # 2. .cio-section table: color: #e0e0e0; background-color: transparent; (表格整体透明，字体浅灰)
-    # 3. .cio-section td: background-color: rgba(0, 0, 0, 0.5); (单元格半透明深色背景，确保白字清晰)
+    # [V15.17] CSS 全局优化：深色系 + 琥珀金
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body {{ background: #0a0a0a; color: #f0e6d2; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-width: 660px; margin: 0 auto; padding: 20px; }}
-    .main-container {{ border: 2px solid #333; border-top: 5px solid #ffb74d; border-radius: 4px; padding: 20px; background: linear-gradient(180deg, #1b1b1b 0%, #000000 100%); }}
-    .header {{ text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 25px; }}
+    /* 全局背景改为深岩灰，文字颜色更柔和 */
+    body {{ background: {COLOR_BG_MAIN}; color: {COLOR_TEXT_MAIN}; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-width: 660px; margin: 0 auto; padding: 20px; }}
+    /* 主容器：更平滑的深色渐变，边框光晕 */
+    .main-container {{ border: 1px solid {COLOR_BORDER}; border-top: 4px solid {COLOR_GOLD}; border-radius: 6px; padding: 20px; background: linear-gradient(180deg, #14171a 0%, #0a0c0e 100%); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }}
+    .header {{ text-align: center; border-bottom: 1px solid {COLOR_BORDER}; padding-bottom: 20px; margin-bottom: 25px; }}
+    .logo-img {{ width: 100%; height: auto; object-fit: contain; display: block; margin: 0 auto;filter: drop-shadow(0 0 5px {COLOR_GOLD}33); }}
+    .subtitle {{ font-size: 11px; color: {COLOR_TEXT_SUB}; margin-top: 12px; text-transform: uppercase; letter-spacing: 2px; }}
+    /* 模块面板：统一深色背景，减少杂色 */
+    .radar-panel {{ background: {COLOR_BG_CARD}; border: 1px solid {COLOR_BORDER}; border-radius: 4px; padding: 15px; margin-bottom: 25px; }}
+    .radar-title {{ font-size: 14px; color: {COLOR_GOLD}; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 6px; letter-spacing: 1px; display:flex; align-items:center; }}
+    .radar-title::before {{ content: '📡'; margin-right: 6px; font-size: 12px; }}
     
-    /* Logo 样式：自适应宽度 */
-    .logo-img {{ width: 100%; height: auto; object-fit: contain; display: block; margin: 0 auto; }}
+    /* CIO Section：优化为深红色调，减少刺眼感 */
+    .cio-section {{ background: linear-gradient(145deg, #2a0f0f, #1a0505); border: 1px solid #5c1818; border-left: 3px solid {COLOR_RED}; padding: 20px; margin-bottom: 20px; border-radius: 4px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
+    .cio-section * {{ color: {COLOR_TEXT_MAIN} !important; line-height: 1.6; }}
+    .cio-section h3 {{ border-bottom: 1px dashed #5c1818; padding-bottom: 5px; margin-top: 15px; margin-bottom: 8px; display: block; width: 100%; color: {COLOR_GOLD} !important; }}
+    /* 表格深度修复 (保持不变) */
+    .cio-section table {{ width: 100%; border-collapse: collapse; margin: 15px 0; color: {COLOR_TEXT_MAIN} !important; background-color: transparent !important; font-size: 11px; }}
+    .cio-section th {{ background-color: rgba(250, 176, 5, 0.1) !important; color: {COLOR_GOLD} !important; border: 1px solid #444 !important; padding: 8px; text-align: left; }}
+    .cio-section td {{ border: 1px solid #333 !important; padding: 8px; background-color: rgba(0, 0, 0, 0.3) !important; }}
     
-    .subtitle {{ font-size: 11px; color: #888; margin-top: 10px; text-transform: uppercase; }}
-    .radar-panel {{ background: #111; border: 1px solid #333; border-radius: 4px; padding: 15px; margin-bottom: 25px; }}
-    .radar-title {{ font-size: 14px; color: #ffb74d; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #444; padding-bottom: 6px; letter-spacing: 1px; }}
+    /* 顾问 Section：优化为深金色调 */
+    .advisor-section {{ background: linear-gradient(145deg, #2a220f, #1a1605); border: 1px solid {COLOR_GOLD}44; border-left: 3px solid {COLOR_GOLD}; padding: 20px; margin-bottom: 30px; border-radius: 4px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; }}
+    .advisor-section * {{ color: {COLOR_TEXT_MAIN} !important; line-height: 1.6; font-family: 'Georgia', serif; }}
+    .advisor-section h4 {{ color: {COLOR_GOLD} !important; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px dashed #444; padding-bottom: 4px; }}
     
-    /* CIO Section 样式 */
-    .cio-section {{ background: linear-gradient(145deg, #1a0505, #2b0b0b); border: 1px solid #5c1818; border-left: 4px solid #d32f2f; padding: 20px; margin-bottom: 20px; border-radius: 2px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }}
-    .cio-section * {{ color: #ffffff !important; line-height: 1.6; }}
-    .cio-section h3 {{ border-bottom: 1px dashed #5c1818; padding-bottom: 5px; margin-top: 15px; margin-bottom: 8px; display: block; width: 100%; color: #ffb74d !important; }}
-    
-    /* [关键修复] 强制表格深色模式，解决文字看不清的问题 */
-    .cio-section table {{ width: 100%; border-collapse: collapse; margin: 15px 0; color: #e0e0e0 !important; background-color: transparent !important; font-size: 11px; }}
-    .cio-section th {{ background-color: rgba(255, 183, 77, 0.1) !important; color: #ffb74d !important; border: 1px solid #444 !important; padding: 8px; text-align: left; }}
-    /* [关键] 单元格背景改为半透明深色，确保浅色文字清晰 */
-    .cio-section td {{ border: 1px solid #333 !important; padding: 8px; background-color: rgba(0, 0, 0, 0.5) !important; }}
-    
-    .advisor-section {{ background: #0f0f0f; border: 1px solid #d4af37; border-left: 4px solid #ffd700; padding: 20px; margin-bottom: 30px; border-radius: 4px; box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); position: relative; }}
-    .advisor-section * {{ color: #ffffff !important; line-height: 1.6; font-family: 'Georgia', serif; }}
-    .advisor-section h4 {{ color: #ffd700 !important; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px dashed #333; padding-bottom: 4px; }}
-    .section-title {{ font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #eee; text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }}
-    .footer {{ text-align: center; font-size: 10px; color: #444; margin-top: 40px; }} 
-    </style></head><body><div class="main-container"><div class="header"><img src="{logo_url}" alt="QUEZHIFENG QUANT" class="logo-img"><div class="subtitle">MAGPIE SENSES THE WIND | V15.15 FULL CONTEXT</div></div><div class="radar-panel"><div class="radar-title">📡 7x24 GLOBAL LIVE WIRE</div>{news_html}</div><div class="cio-section"><div class="section-title">🛑 CIO 战略审计</div>{cio_html}</div><div class="advisor-section"><div class="section-title" style="color: #ffd700;">🐦 鹊知风·场外实战复盘</div>{advisor_html}</div>{rows}<div class="footer">EST. 2026 | POWERED BY AKSHARE & EM | V15.15</div></div></body></html>"""
+    .section-title {{ font-size: 16px; font-weight: bold; margin-bottom: 15px; color: {COLOR_TEXT_MAIN}; text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display:flex; align-items:center; }}
+    .footer {{ text-align: center; font-size: 10px; color: #555; margin-top: 40px; border-top: 1px solid #222; padding-top: 15px; }} 
+    </style></head><body><div class="main-container"><div class="header"><img src="{logo_url}" alt="QUEZHIFENG QUANT" class="logo-img"><div class="subtitle">MAGPIE SENSES THE WIND | V15.17 DARK FINANCE UI</div></div><div class="radar-panel"><div class="radar-title">7x24 GLOBAL LIVE WIRE</div>{news_html}</div><div class="cio-section"><div class="section-title"><span style="margin-right:6px;">🛑</span>CIO 战略审计</div>{cio_html}</div><div class="advisor-section"><div class="section-title" style="color: {COLOR_GOLD};"><span style="margin-right:6px;">🐦</span>鹊知风·场外实战复盘</div>{advisor_html}</div>{rows}<div class="footer">EST. 2026 | POWERED BY AKSHARE & EM | V15.17</div></div></body></html>"""
 
 def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, market_context, base_amt, max_daily):
     res = None
@@ -252,16 +266,13 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
     try:
         logger.info(f"Analyzing {fund['name']}...")
         
-        # 1. 读本地数据
         data = fetcher.get_fund_history(fund['code'])
         if data is None or data.empty: 
             return None, "", []
 
-        # 2. 技术指标
         tech = TechnicalAnalyzer.calculate_indicators(data)
         if not tech: return None, "", []
         
-        # 3. 估值
         try:
             val_mult, val_desc = val_engine.get_valuation_status(fund.get('index_name'), fund.get('strategy_type'))
         except:
@@ -269,7 +280,6 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
 
         with tracker_lock: pos = tracker.get_position(fund['code'])
 
-        # 4. AI 分析
         ai_adj = 0; ai_res = {}
         should_run_ai = True
 
@@ -289,14 +299,12 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
                 logger.error(f"AI Analysis Failed: {e}")
                 ai_res = {"bull_view": "Error", "bear_view": "Error", "comment": "Offline", "adjustment": 0}
 
-        # 5. [关键] 提取 AI 决策并传递给算分函数
         ai_decision = ai_res.get('decision', 'PASS') 
         
         amt, lbl, is_sell, s_val = calculate_position_v13(
             tech, ai_adj, ai_decision, val_mult, val_desc, base_amt, max_daily, pos, fund.get('strategy_type'), fund['name']
         )
         
-        # 6. 记账
         with tracker_lock:
             tracker.record_signal(fund['code'], lbl)
             if amt > 0: tracker.add_trade(fund['code'], fund['name'], amt, tech['price'])
@@ -324,7 +332,7 @@ def main():
     tracker = PortfolioTracker()
     val_engine = ValuationEngine()
     
-    logger.info(f">>> [V15.15] Startup | LOCAL_MODE=True | News Source: Local Cache + Live Patch")
+    logger.info(f">>> [V15.17] Startup | LOCAL_MODE=True | News Source: Local Cache + Live Patch")
     tracker.confirm_trades()
     try:
         analyst = NewsAnalyst()
@@ -339,7 +347,6 @@ def main():
     if market_context and market_context != "今日暂无重大新闻。":
         for line in market_context.split('\n'):
             try:
-                # [关键过滤] 只保留标题行，过滤掉摘要行
                 if line.strip().startswith('['):
                     all_news_seen.append(line.strip())
             except Exception:
@@ -371,6 +378,6 @@ def main():
         
         html = render_html_report_v13(all_news_seen, results, cio_html, advisor_html) 
         
-        send_email("🐦 鹊知风 V15.15 铁拳决议 (Full Context)", html, attachment_path=LOG_FILENAME)
+        send_email("🐦 鹊知风 V15.17 铁拳决议 (Dark Finance UI)", html, attachment_path=LOG_FILENAME)
 
 if __name__ == "__main__": main()
