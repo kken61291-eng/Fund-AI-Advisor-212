@@ -38,28 +38,28 @@ class NewsAnalyst:
 
     def _fetch_live_patch(self):
         """
-        [关键升级] 获取 7x24全球财经电报 (类似财联社/东财Live)
+        [7x24全球财经电报] - 暴力抓取模式
         """
         try:
             time.sleep(1)
-            # 升级接口：stock_telegraph_em 返回的是实时电报，包含 'content' (摘要)
+            # 使用电报接口
             df = ak.stock_telegraph_em()
             news = []
             
-            # 取最新的 15 条 (7x24 信息量大，可以多取点)
-            for i in range(min(15, len(df))):
+            # [关键修改] 抓取数量从 15 提升到 50，确保覆盖面
+            for i in range(min(50, len(df))):
                 title = str(df.iloc[i].get('title') or '')
                 content = str(df.iloc[i].get('content') or '')
                 t = str(df.iloc[i].get('public_time') or '')
                 if len(t) > 10: t = t[5:16] 
                 
-                # 过滤逻辑
+                # 过滤垃圾信息
                 if self._is_valid_news(title):
-                    # 组合标题和摘要，模拟截图效果
+                    # 这里我们将内容拼接给 AI 看，但在 main.py 里我们会处理显示逻辑
                     item_str = f"[{t}] {title}"
+                    # 如果有实质内容，拼接到字符串里喂给 AI（增加分析深度）
                     if len(content) > 10 and content != title:
-                        # 截取摘要，避免太长
-                        item_str += f"\n   >>> 摘要: {content[:150]}..."
+                        item_str += f"\n   >>> 内容: {content[:200]}"
                     news.append(item_str)
             return news
         except Exception as e:
@@ -67,7 +67,7 @@ class NewsAnalyst:
             return []
 
     def _is_valid_news(self, title):
-        """噪音过滤器"""
+        """噪音过滤器：只保留有信息量的"""
         bad_keywords = [
             "晚间要闻", "要闻集锦", "晚市要闻", "周前瞻", "周回顾", 
             "早间要闻", "新闻联播", "要闻速递", "重要公告", "盘前必读",
@@ -75,15 +75,15 @@ class NewsAnalyst:
         ]
         for kw in bad_keywords:
             if kw in title: return False
-        if len(title) < 5: return False
+        if len(title) < 4: return False # 太短的也不要
         return True
 
-    def get_market_context(self, max_length=25000):
+    def get_market_context(self, max_length=30000): # 增加Token上限
         news_lines = []
         today_str = get_beijing_time().strftime("%Y-%m-%d")
         file_path = f"data_news/news_{today_str}.jsonl"
         
-        # 1. 优先读取实时电报 (最新鲜)
+        # 1. 优先读取实时电报 (最新鲜，量大)
         live_news = self._fetch_live_patch()
         if live_news:
             news_lines.extend(live_news)
@@ -103,7 +103,7 @@ class NewsAnalyst:
                             
                             content = str(item.get('content') or item.get('digest') or "")
                             if len(content) > 50: 
-                                news_entry = f"[{t_str}] {title}\n   >>> 内容: {content[:200]}..." 
+                                news_entry = f"[{t_str}] {title}\n   >>> 内容: {content[:200]}" 
                             else:
                                 news_entry = f"[{t_str}] {title}"
                             
@@ -112,16 +112,18 @@ class NewsAnalyst:
             except Exception as e:
                 logger.error(f"读取新闻缓存失败: {e}")
         
-        # 去重与截断
+        # 去重
         unique_news = []
         seen = set()
-        for n in news_lines: # 此时 news_lines 混合了实时和历史
+        for n in news_lines:
+            # 只用标题去重
             title_part = n.split('\n')[0]
             if title_part not in seen:
                 seen.add(title_part)
                 unique_news.append(n)
         
-        final_text = "\n\n".join(unique_news[:50]) # 限制条数防止溢出
+        # 喂给 AI 的全量文本
+        final_text = "\n\n".join(unique_news[:80]) # 限制给AI看最新的80条，防止Token溢出
         
         if len(final_text) > max_length:
             return final_text[:max_length] + "\n...(早期消息已截断)"
@@ -129,25 +131,16 @@ class NewsAnalyst:
         return final_text if final_text else "今日暂无重大新闻。"
 
     def _clean_json(self, text):
-        """
-        [强力修复] 清洗 DeepSeek 返回的烂 JSON
-        """
         try:
-            # 1. 移除 markdown 标记
             text = re.sub(r'```json\s*', '', text)
             text = re.sub(r'```', '', text)
             text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-            
-            # 2. 提取最外层 {}
             start = text.find('{')
             end = text.rfind('}')
             if start != -1 and end != -1:
                 text = text[start:end+1]
-            
-            # 3. 修复常见的 JSON 语法错误 (尾部逗号)
             text = re.sub(r',\s*}', '}', text)
             text = re.sub(r',\s*]', ']', text)
-            
             return text
         except: return "{}"
     
@@ -168,7 +161,6 @@ class NewsAnalyst:
         fuse_msg = risk['risk_msg']
         trend_score = tech.get('quant_score', 50)
         
-        # Prompt 保持不变 (品牌名称已更新)
         prompt = f"""
         【系统架构】鹊知风投委会 | RAG增强模式
         
@@ -180,12 +172,11 @@ class NewsAnalyst:
         【💀 鹊知风实战经验库】
         {expert_rules}
         
-        【舆情摘要】
-        {str(news)[:15000]}
+        【舆情摘要 (Content-Aware)】
+        {str(news)[:20000]}
 
         【任务】
-        输出严格JSON，不要任何Markdown格式，不要任何解释性文字。
-        Adjustment必须是整数。
+        输出严格JSON，不要Markdown。Adjustment为整数。
 
         【输出格式】
         {{
@@ -200,7 +191,7 @@ class NewsAnalyst:
         payload = {
             "model": self.model_tactical,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1, # 降低温度，提高 JSON 稳定性
+            "temperature": 0.1,
             "max_tokens": 800,
             "response_format": {"type": "json_object"}
         }
@@ -208,19 +199,14 @@ class NewsAnalyst:
         try:
             resp = requests.post(f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=90)
             if resp.status_code != 200:
-                logger.error(f"API Error {resp.status_code}")
                 return self._get_fallback_result()
             
             content = resp.json()['choices'][0]['message']['content']
             result = json.loads(self._clean_json(content))
             
-            # [关键修复] 强制类型转换，防止 'int' + 'str' 错误
-            try:
-                result['adjustment'] = int(result.get('adjustment', 0))
-            except:
-                result['adjustment'] = 0
+            try: result['adjustment'] = int(result.get('adjustment', 0))
+            except: result['adjustment'] = 0
 
-            # 熔断覆盖
             if fuse_level >= 2:
                 result['decision'] = 'REJECT'
                 result['adjustment'] = -30
@@ -236,9 +222,6 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=5)
     def review_report(self, report_text, macro_str):
-        # ... (review_report 保持原样，与上一次提供的完整版一致) ...
-        # 为节省篇幅，此处省略 prompt 内容，请复用上一次代码中的 review_report 
-        # (如果您需要我再次完整输出，请告诉我)
         current_date = datetime.now().strftime("%Y年%m月%d日")
         prompt = f"""
         【系统角色】鹊知风CIO | 机构级复盘备忘录 | 日期: {current_date}
@@ -250,7 +233,6 @@ class NewsAnalyst:
 
     @retry(retries=2, delay=5)
     def advisor_review(self, report_text, macro_str):
-        # ... (advisor_review 保持原样) ...
         current_date = datetime.now().strftime("%Y年%m月%d日")
         prompt = f"""
         【系统角色】鹊知风Red Team | 独立审计顾问 | 日期: {current_date}
