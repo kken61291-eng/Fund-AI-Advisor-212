@@ -38,8 +38,7 @@ class NewsAnalyst:
 
     def _fetch_live_patch(self):
         """
-        [7x24全球财经电报]
-        UI还原关键：只返回 [时间] 标题 格式，不拼摘要，配合 main.py 还原 V15.14 样式
+        [7x24全球财经电报] - 暴力抓取模式
         """
         try:
             time.sleep(1)
@@ -47,15 +46,16 @@ class NewsAnalyst:
             df = ak.stock_telegraph_em()
             news = []
             
-            # 保持 50 条的大容量，但格式回归经典
-            for i in range(min(50, len(df))):
+            # [修改] 既然要按长度限制，这里源头就不做硬性条数限制了
+            # 抓取 100 条作为候选池，后续由 get_market_context 按长度筛选
+            for i in range(min(100, len(df))):
                 title = str(df.iloc[i].get('title') or '')
                 t = str(df.iloc[i].get('public_time') or '')
                 if len(t) > 10: t = t[5:16] 
                 
                 # 宽松过滤
                 if self._is_valid_news(title):
-                    # [回归 V15.14] 纯净格式，不带 content
+                    # 纯净格式 [时间] 标题
                     item_str = f"[{t}] {title}"
                     news.append(item_str)
             return news
@@ -77,15 +77,18 @@ class NewsAnalyst:
             
         return True
 
-    def get_market_context(self, max_length=30000):
-        news_lines = []
+    def get_market_context(self, max_length=35000): 
+        """
+        [核心逻辑升级] 按 Token/长度 限制，而非条数限制
+        """
+        news_candidates = []
         today_str = get_beijing_time().strftime("%Y-%m-%d")
         file_path = f"data_news/news_{today_str}.jsonl"
         
-        # 1. 优先读取实时电报
+        # 1. 优先读取实时电报 (最新鲜)
         live_news = self._fetch_live_patch()
         if live_news:
-            news_lines.extend(live_news)
+            news_candidates.extend(live_news)
             
         # 2. 补充本地缓存的历史新闻
         if os.path.exists(file_path):
@@ -100,28 +103,42 @@ class NewsAnalyst:
                             t_str = str(item.get('time', ''))
                             if len(t_str) > 10: t_str = t_str[5:16]
                             
-                            # [回归 V15.14] 纯净格式
                             news_entry = f"[{t_str}] {title}"
-                            news_lines.append(news_entry)
+                            news_candidates.append(news_entry)
                         except: pass
             except Exception as e:
                 logger.error(f"读取新闻缓存失败: {e}")
         
-        # 去重
+        # 3. 去重
         unique_news = []
         seen = set()
-        for n in news_lines:
-            # 简单文本去重
+        # 这里的顺序可能是乱的，先全部收集
+        for n in news_candidates:
+            # 简单去重
             if n not in seen:
                 seen.add(n)
                 unique_news.append(n)
         
-        # 喂给 AI 的全量文本
-        # 使用 \n 连接，main.py 会 split('\n')
-        final_text = "\n".join(unique_news[:80]) 
+        # 4. [关键] 按时间排序 (倒序：最新的在最前面)
+        # 假设格式是 [MM-DD HH:MM] ... 我们主要依赖列表本身的顺序（live在前，local在后通常也是新的在前）
+        # 这里为了保险，不做复杂的时间解析排序，默认 live_news 已经是倒序的
         
-        if len(final_text) > max_length:
-            return final_text[:max_length] + "\n...(早期消息已截断)"
+        # 5. [关键] 按长度截断 (Token Window Limit)
+        final_list = []
+        current_len = 0
+        
+        for news_item in unique_news:
+            item_len = len(news_item)
+            # 如果加上这条新闻还没超标，就加进去
+            if current_len + item_len < max_length:
+                final_list.append(news_item)
+                current_len += item_len + 1 # +1 是换行符
+            else:
+                # 满了就停止，不再往里塞旧新闻了
+                break
+        
+        # 使用单换行符连接，方便 main.py 解析
+        final_text = "\n".join(final_list)
         
         return final_text if final_text else "今日暂无重大新闻。"
 
@@ -167,8 +184,8 @@ class NewsAnalyst:
         【💀 鹊知风实战经验库】
         {expert_rules}
         
-        【舆情扫描】
-        {str(news)[:20000]}
+        【舆情扫描 (基于上下文长度限制)】
+        {str(news)[:25000]}
 
         【任务】
         输出严格JSON，不要Markdown。Adjustment为整数。
