@@ -26,7 +26,7 @@ class NewsAnalyst:
         self.knowledge_base = self._load_knowledge_base()
 
     def _load_knowledge_base(self):
-        """加载 JSON 经验库"""
+        """加载 JSON 经验库，若不存在则返回空"""
         try:
             if os.path.exists('knowledge_base.json'):
                 with open('knowledge_base.json', 'r', encoding='utf-8') as f:
@@ -38,29 +38,25 @@ class NewsAnalyst:
 
     def _fetch_live_patch(self):
         """
-        [7x24全球财经电报] - 暴力抓取模式
+        [7x24全球财经电报]
+        UI还原关键：只返回 [时间] 标题 格式，不拼摘要，配合 main.py 还原 V15.14 样式
         """
         try:
             time.sleep(1)
-            # 使用电报接口，获取含摘要的实时新闻
+            # 使用电报接口
             df = ak.stock_telegraph_em()
             news = []
             
-            # 抓取数量 50 条，确保覆盖面
+            # 保持 50 条的大容量，但格式回归经典
             for i in range(min(50, len(df))):
                 title = str(df.iloc[i].get('title') or '')
-                content = str(df.iloc[i].get('content') or '')
                 t = str(df.iloc[i].get('public_time') or '')
                 if len(t) > 10: t = t[5:16] 
                 
                 # 宽松过滤
                 if self._is_valid_news(title):
+                    # [回归 V15.14] 纯净格式，不带 content
                     item_str = f"[{t}] {title}"
-                    # 关键：如果有内容，拼接到字符串里喂给 AI
-                    # 这样即使标题是"晚间要闻"，AI也能读到里面的干货
-                    if len(content) > 5 and content != title:
-                        # 限制摘要长度，防止单条过长挤占Token，300字通常足够覆盖核心
-                        item_str += f"\n   >>> 内容: {content[:300]}"
                     news.append(item_str)
             return news
         except Exception as e:
@@ -69,8 +65,8 @@ class NewsAnalyst:
 
     def _is_valid_news(self, title):
         """
-        [修改] 宽松过滤器
-        不再过滤'要闻集锦'、'周回顾'等，因为这些条目的 content 包含高价值宏观信息
+        [宽松过滤器]
+        保留绝大多数新闻，只过滤明显的空数据或极短数据
         """
         if not title: 
             return False
@@ -79,17 +75,14 @@ class NewsAnalyst:
         if len(title) < 2: 
             return False
             
-        # 移除之前的 bad_keywords 黑名单
-        # 让所有包含实质内容的汇总类新闻都能通过
-        
         return True
 
-    def get_market_context(self, max_length=35000): # 进一步增加Token上限，容纳更多内容
+    def get_market_context(self, max_length=30000):
         news_lines = []
         today_str = get_beijing_time().strftime("%Y-%m-%d")
         file_path = f"data_news/news_{today_str}.jsonl"
         
-        # 1. 优先读取实时电报 (最新鲜，量大)
+        # 1. 优先读取实时电报
         live_news = self._fetch_live_patch()
         if live_news:
             news_lines.extend(live_news)
@@ -107,31 +100,25 @@ class NewsAnalyst:
                             t_str = str(item.get('time', ''))
                             if len(t_str) > 10: t_str = t_str[5:16]
                             
-                            content = str(item.get('content') or item.get('digest') or "")
-                            
-                            # 同样的拼接逻辑
-                            if len(content) > 10: 
-                                news_entry = f"[{t_str}] {title}\n   >>> 内容: {content[:300]}" 
-                            else:
-                                news_entry = f"[{t_str}] {title}"
-                            
+                            # [回归 V15.14] 纯净格式
+                            news_entry = f"[{t_str}] {title}"
                             news_lines.append(news_entry)
                         except: pass
             except Exception as e:
                 logger.error(f"读取新闻缓存失败: {e}")
         
-        # 去重 (仅根据标题去重，保留最新的一条)
+        # 去重
         unique_news = []
         seen = set()
         for n in news_lines:
-            title_part = n.split('\n')[0]
-            if title_part not in seen:
-                seen.add(title_part)
+            # 简单文本去重
+            if n not in seen:
+                seen.add(n)
                 unique_news.append(n)
         
         # 喂给 AI 的全量文本
-        # 限制最新的 60 条，配合 max_length 截断
-        final_text = "\n\n".join(unique_news[:60]) 
+        # 使用 \n 连接，main.py 会 split('\n')
+        final_text = "\n".join(unique_news[:80]) 
         
         if len(final_text) > max_length:
             return final_text[:max_length] + "\n...(早期消息已截断)"
@@ -180,8 +167,8 @@ class NewsAnalyst:
         【💀 鹊知风实战经验库】
         {expert_rules}
         
-        【舆情摘要 (Content-Aware)】
-        {str(news)[:25000]}
+        【舆情扫描】
+        {str(news)[:20000]}
 
         【任务】
         输出严格JSON，不要Markdown。Adjustment为整数。
