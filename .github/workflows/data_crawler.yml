@@ -2,8 +2,8 @@ name: Daily Data Crawler
 
 on:
   schedule:
-    # 每小时第 0 分钟运行 (注意：GitHub 可能有 10-30 分钟延迟)
-    - cron: '0 * * * *'
+    # 每小时第 30 分钟运行 (注意：GitHub 可能有 10-30 分钟延迟)
+    - cron: '30 * * * *'
   workflow_dispatch:
 
 # [新增] 必须赋予写入权限，否则最后的 git push 会失败
