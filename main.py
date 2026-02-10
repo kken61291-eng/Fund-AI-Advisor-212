@@ -1,14 +1,3 @@
-没问题。为了让“买入”、“卖出”和“观望”在移动端报告中一眼即识，我对 `render_html_report_v13` 函数中的 **操作标签渲染逻辑** 进行了视觉增强。
-
-现在，不同的操作会有独立的 **背景色卡片** 和 **Emoji 图标** 区分：
-
-* **买入**：红色高亮背景 + ⚡ 图标 + 金额。
-* **卖出**：绿色高亮背景 + 💰 图标 + 金额。
-* **观望**：灰色低调背景 + ☕ 图标。
-
-以下是修改后的完整全量代码：
-
-```python
 import yaml
 import os
 import threading
@@ -459,5 +448,3 @@ def main():
         send_email("🕊️ 鹊知风 V15.20 洞察微澜，御风而行", html, attachment_path=LOG_FILENAME)
 
 if __name__ == "__main__": main()
-
-```
