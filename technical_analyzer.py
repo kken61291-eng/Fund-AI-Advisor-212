@@ -87,12 +87,26 @@ class TechnicalAnalyzer:
 
             # --- [V14.28 逻辑保留] 全时段动态成交量投影 ---
             last_date = df.index[-1]
-            now_bj = get_beijing_time()
             
-            # 只有当K线日期是今天，且未收盘时，才进行预测
-            if last_date.date() == now_bj.date() and now_bj.time() < dt_time(15, 0):
+            # [修改核心: 优先使用数据源自带的时间]
+            current_ref_time = None
+            if 'fetch_time' in df.columns:
+                try:
+                    # 获取最后一行数据的 fetch_time
+                    fetch_time_val = df.iloc[-1]['fetch_time']
+                    # 转换为 datetime 对象
+                    current_ref_time = pd.to_datetime(fetch_time_val).to_pydatetime()
+                except Exception as e:
+                    logger.warning(f"⚠️ fetch_time 解析失败，回退至系统时间: {e}")
+            
+            # 如果没有 fetch_time 或解析失败，使用系统时间作为兜底
+            if current_ref_time is None:
+                current_ref_time = get_beijing_time()
+            
+            # 只有当K线日期是今天(fetch_time的日期)，且未收盘时，才进行预测
+            if last_date.date() == current_ref_time.date() and current_ref_time.time() < dt_time(15, 0):
                 
-                trade_mins = TechnicalAnalyzer._calculate_trade_minutes(now_bj.time())
+                trade_mins = TechnicalAnalyzer._calculate_trade_minutes(current_ref_time.time())
                 
                 if trade_mins > 15:
                     original_vol = df.iloc[-1]['volume']
