@@ -8,7 +8,7 @@ import hashlib
 import pytz
 from bs4 import BeautifulSoup
 
-# --- Selenium 模块 (模拟浏览器) ---
+# --- Selenium 模块 (模拟浏览器专用) ---
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -35,7 +35,6 @@ def generate_news_id(item):
 def clean_time_str(t_str):
     if not t_str: return ""
     try:
-        # 尝试解析常见格式
         if len(str(t_str)) == 10: 
              return datetime.fromtimestamp(int(t_str)).strftime("%Y-%m-%d %H:%M:%S")
         if len(str(t_str)) > 19:
@@ -45,13 +44,13 @@ def clean_time_str(t_str):
         return str(t_str)
 
 # ==========================================
-# 1. 东财抓取 (使用 Akshare API)
+# 1. 东财抓取 (API模式)
 # ==========================================
 def fetch_eastmoney():
     items = []
     try:
         print("   - [API] 正在抓取: 东方财富 (EastMoney)...")
-        # 强制更新一下接口，防止报错
+        # 强制更新一下接口
         df_em = ak.stock_telegraph_em()
         if df_em is not None and not df_em.empty:
             for _, row in df_em.iterrows():
@@ -71,7 +70,7 @@ def fetch_eastmoney():
     return items
 
 # ==========================================
-# 2. 财联社抓取 (使用 Selenium 模拟浏览器)
+# 2. 财联社抓取 (浏览器模式)
 # ==========================================
 def fetch_cls_selenium():
     items = []
@@ -79,52 +78,37 @@ def fetch_cls_selenium():
     try:
         print("   - [Browser] 正在启动 Chrome 抓取: 财联社 (CLS)...")
         
-        # 配置无头浏览器 (Headless Chrome)
         chrome_options = Options()
-        chrome_options.add_argument("--headless") # 无界面模式
+        chrome_options.add_argument("--headless") 
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        # 伪装 User-Agent
         chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
 
-        # 自动安装并启动 Driver
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver.set_page_load_timeout(60) # 增加超时
         
-        # 设置超时
-        driver.set_page_load_timeout(30)
-        
-        # 访问财联社电报页面
         url = "https://www.cls.cn/telegraph"
         driver.get(url)
         
-        # 等待内容加载 (等待列表出现)
+        # 等待加载
         try:
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "telegraph-list"))
             )
         except:
             print("   ⚠️ 等待网页加载超时，尝试直接解析...")
 
-        # 滚动一下屏幕触发懒加载
+        # 模拟滚动
         driver.execute_script("window.scrollTo(0, 1000);")
-        time.sleep(2) 
+        time.sleep(3) 
 
-        # 获取页面 HTML
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         
-        # 解析数据 (根据财联社网页结构)
-        # 通常是一个 class="telegraph-list" 的列表
-        # 每一项可能有 class="telegraph-content-box" 等
-        
-        # 寻找所有的时间线节点 (这需要根据 cls 实际 html 结构调整，以下是通用抓取逻辑)
-        # 目前 CLS 结构通常是: div.telegraph-list -> div.telegraph-list-item
         nodes = soup.find_all("div", class_="telegraph-list-item")
-        
         if not nodes:
-            # 备用方案：尝试找所有带时间戳样式的文本
             nodes = soup.select("div.telegraph-content-box")
 
         print(f"   - 捕获到 {len(nodes)} 个网页节点")
@@ -133,25 +117,20 @@ def fetch_cls_selenium():
 
         for node in nodes:
             try:
-                # 提取时间 (通常在 span 中)
                 time_span = node.find("span", class_="telegraph-time")
                 time_str = time_span.get_text().strip() if time_span else ""
                 
-                # 补全日期 (网页通常只显示 14:30)
                 if len(time_str) <= 5 and ":" in time_str:
                     full_time = f"{current_date_prefix} {time_str}:00"
                 else:
                     full_time = time_str
 
-                # 提取内容
                 content_div = node.find("div", class_="telegraph-content")
                 if not content_div:
-                    # 尝试备用结构
                     content_div = node.find("div", class_="telegraph-detail")
                 
                 content_text = content_div.get_text().strip() if content_div else ""
                 
-                # 财联社电报通常没有独立标题，内容第一句即标题
                 if content_text:
                     title = content_text[:40] + "..." if len(content_text) > 40 else content_text
                     
@@ -180,11 +159,17 @@ def fetch_and_save_news():
     
     all_news_items = []
 
-    # 1. 东财
+    # 1. 东财 (API)
     em_items = fetch_eastmoney()
     all_news_items.extend(em_items)
 
-    # 2. 财联社 (浏览器模式)
+    # ==========================================
+    # [新增] 强制等待 50 秒
+    # ==========================================
+    print(f"⏳ 东财抓取完毕，正在休眠 50 秒 (避免请求过快)...")
+    time.sleep(50)
+
+    # 2. 财联社 (Selenium)
     cls_items = fetch_cls_selenium()
     all_news_items.extend(cls_items)
 
@@ -206,7 +191,6 @@ def fetch_and_save_news():
                 except: pass
 
     new_count = 0
-    # 简单按时间字符串倒序
     all_news_items.sort(key=lambda x: x['time'], reverse=True)
 
     with open(today_file, 'a', encoding='utf-8') as f:
