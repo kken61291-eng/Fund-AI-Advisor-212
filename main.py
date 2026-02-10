@@ -94,7 +94,7 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     if final_mult < 0 and pos['shares'] > 0 and held_days < 7:
         final_mult = 0; reasons.append(f"规则:锁仓({held_days}天)")
 
-    # 8. 金额计算
+    # 8. 计算最终金额
     final_amt = 0; is_sell = False; sell_val = 0; label = "观望"
     if final_mult > 0:
         amt = int(base_amt * final_mult)
@@ -210,13 +210,17 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
     # 注意：请务必将 logo.png 上传到 GitHub 仓库根目录
     logo_url = "https://raw.githubusercontent.com/kken61291-eng/Fund-AI-Advisor/main/logo.png"
     
+    # [关键 CSS 修改]
+    # 1. .logo-img: width: 100%; height: auto; object-fit: contain; (自适应宽度)
+    # 2. .cio-section table: color: #e0e0e0; background-color: transparent; (表格整体透明，字体浅灰)
+    # 3. .cio-section td: background-color: rgba(0, 0, 0, 0.5); (单元格半透明深色背景，确保白字清晰)
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body {{ background: #0a0a0a; color: #f0e6d2; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-width: 660px; margin: 0 auto; padding: 20px; }}
     .main-container {{ border: 2px solid #333; border-top: 5px solid #ffb74d; border-radius: 4px; padding: 20px; background: linear-gradient(180deg, #1b1b1b 0%, #000000 100%); }}
     .header {{ text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 25px; }}
     
-    /* Logo 样式 */
-    .logo-img {{ max-width: 200px; height: auto; display: block; margin: 0 auto; }}
+    /* Logo 样式：自适应宽度 */
+    .logo-img {{ width: 100%; height: auto; object-fit: contain; display: block; margin: 0 auto; }}
     
     .subtitle {{ font-size: 11px; color: #888; margin-top: 10px; text-transform: uppercase; }}
     .radar-panel {{ background: #111; border: 1px solid #333; border-radius: 4px; padding: 15px; margin-bottom: 25px; }}
@@ -227,10 +231,11 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
     .cio-section * {{ color: #ffffff !important; line-height: 1.6; }}
     .cio-section h3 {{ border-bottom: 1px dashed #5c1818; padding-bottom: 5px; margin-top: 15px; margin-bottom: 8px; display: block; width: 100%; color: #ffb74d !important; }}
     
-    /* [修复] 强制表格透明底色，解决文字看不清的问题 */
+    /* [关键修复] 强制表格深色模式，解决文字看不清的问题 */
     .cio-section table {{ width: 100%; border-collapse: collapse; margin: 15px 0; color: #e0e0e0 !important; background-color: transparent !important; font-size: 11px; }}
     .cio-section th {{ background-color: rgba(255, 183, 77, 0.1) !important; color: #ffb74d !important; border: 1px solid #444 !important; padding: 8px; text-align: left; }}
-    .cio-section td {{ border: 1px solid #333 !important; padding: 8px; background-color: rgba(255, 255, 255, 0.02) !important; }}
+    /* [关键] 单元格背景改为半透明深色，确保浅色文字清晰 */
+    .cio-section td {{ border: 1px solid #333 !important; padding: 8px; background-color: rgba(0, 0, 0, 0.5) !important; }}
     
     .advisor-section {{ background: #0f0f0f; border: 1px solid #d4af37; border-left: 4px solid #ffd700; padding: 20px; margin-bottom: 30px; border-radius: 4px; box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); position: relative; }}
     .advisor-section * {{ color: #ffffff !important; line-height: 1.6; font-family: 'Georgia', serif; }}
