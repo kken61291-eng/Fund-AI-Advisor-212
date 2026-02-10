@@ -13,36 +13,22 @@ class NewsAnalyst:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.base_url = os.getenv("LLM_BASE_URL")
-        # 战术执行 (快思考): V3.2 - 负责 CGO/CRO/CIO 实时信号 (无RAG)
+        # 战术执行 (快思考): V3.2 - 负责 CGO/CRO/CIO 实时信号
         self.model_tactical = "Pro/deepseek-ai/DeepSeek-V3.2"      
-        # 战略推理 (慢思考): R1 - 负责 宏观策略/复盘审计
+        # 战略推理 (慢思考): R1 - 负责 宏观复盘/逻辑审计
         self.model_strategic = "Pro/deepseek-ai/DeepSeek-R1"  
 
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
-        # [RAG] 加载板块实战经验库 (仅供 CIO 使用)
-        self.knowledge_base = self._load_knowledge_base()
-
-    def _load_knowledge_base(self):
-        """加载 JSON 经验库，若不存在则返回空"""
-        try:
-            if os.path.exists('knowledge_base.json'):
-                with open('knowledge_base.json', 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return {}
-        except Exception as e:
-            logger.warning(f"⚠️ 无法加载经验库: {e}")
-            return {}
+        # [V15.16 改动] 移除 self.knowledge_base，不再加载任何预设规则
 
     def _clean_time(self, t_str):
         """统一时间格式为 MM-DD HH:MM"""
         try:
-            # 如果是完整时间字符串 YYYY-MM-DD HH:MM:SS
             if len(str(t_str)) >= 16:
-                return str(t_str)[5:16] # 取 MM-DD HH:MM
+                return str(t_str)[5:16]
             return str(t_str)
         except: return ""
 
@@ -78,7 +64,6 @@ class NewsAnalyst:
                     content = str(df_cls.iloc[i].get('content') or '')
                     raw_t = df_cls.iloc[i].get('ctime', df_cls.iloc[i].get('publish_time'))
                     
-                    # CLS的时间经常是时间戳，尝试转换
                     try:
                         if str(raw_t).isdigit():
                             dt = datetime.fromtimestamp(int(raw_t))
@@ -100,13 +85,8 @@ class NewsAnalyst:
         return news_list
 
     def _is_valid_news(self, title):
-        """
-        [宽松过滤器] 保留绝大多数新闻
-        """
-        if not title: 
-            return False
-        if len(title) < 2: 
-            return False
+        if not title: return False
+        if len(title) < 2: return False
         return True
 
     def get_market_context(self, max_length=35000): 
@@ -134,7 +114,6 @@ class NewsAnalyst:
                                 
                             t_str = self._clean_time(item.get('time', ''))
                             source = item.get('source', 'Local')
-                            # 简写来源
                             src_tag = "[EM]" if source == "EastMoney" else ("[CLS]" if source == "CLS" else "[Local]")
                             
                             content = str(item.get('content') or item.get('digest') or "")
@@ -152,10 +131,7 @@ class NewsAnalyst:
         unique_news = []
         seen = set()
         for n in news_candidates:
-            # 提取标题部分进行去重，忽略前面的 [时间] [来源]
-            # 格式: [MM-DD HH:MM] [SRC] Title
             try:
-                # 找到第二个 ] 之后的内容作为指纹
                 title_part = n.split('] ', 2)[-1].split('\n')[0]
             except:
                 title_part = n.split('\n')[0]
@@ -164,17 +140,14 @@ class NewsAnalyst:
                 seen.add(title_part)
                 unique_news.append(n)
         
-        # 4. 强制按时间戳倒序排序 (最新的在前)
-        # 格式均为 "[MM-DD HH:MM] ..."，字符串排序即可
+        # 4. 强制倒序
         try:
             unique_news.sort(key=lambda x: x[:17], reverse=True)
-        except:
-            pass 
+        except: pass 
         
-        # 5. 按长度截断
+        # 5. 截断
         final_list = []
         current_len = 0
-        
         for news_item in unique_news:
             item_len = len(news_item)
             if current_len + item_len < max_length:
@@ -184,7 +157,6 @@ class NewsAnalyst:
                 break
         
         final_text = "\n".join(final_list)
-        
         return final_text if final_text else "今日暂无重大新闻。"
 
     def _clean_json(self, text):
@@ -208,27 +180,28 @@ class NewsAnalyst:
     @retry(retries=1, delay=2)
     def analyze_fund_v5(self, fund_name, tech, macro, news, risk, strategy_type="core"):
         """
-        [战术层] 联邦投委会 (V3.2) - 纯反应 (无RAG)
+        [战术层] 联邦投委会 (V3.2) - 纯数据驱动 (无RAG干扰)
         """
         fuse_level = risk['fuse_level']
         fuse_msg = risk['risk_msg']
         trend_score = tech.get('quant_score', 50)
         
+        # [V15.16] 提示词净化：移除所有关于“经验库”的描述，强制 AI 只看数据
         prompt = f"""
-        【系统架构】鹊知风投委会 | 战术执行层
+        【系统架构】鹊知风投委会 | 纯数据驱动模式 (Pure Data Driven)
         
         【标的信息】
-        标的: {fund_name}
+        标的: {fund_name} (属性: {strategy_type})
         趋势强度: {trend_score}/100 | 熔断状态: Level{fuse_level} | 硬约束: {fuse_msg}
         技术指标: RSI={tech.get('rsi',50)} | MACD={tech.get('macd',{}).get('trend','-')}
         
-        【舆情扫描 (EastMoney + CLS双源)】
+        【实时舆情 (EastMoney + CLS双源)】
         {str(news)[:25000]}
 
         【任务】
-        作为一线交易员，根据技术指标和当前新闻做出直觉判断。
-        严格遵守技术纪律，不要臆测未知的宏观规则。
-        输出严格JSON，不要Markdown。Adjustment为整数。
+        作为客观的量化交易员，请仅基于上述“技术指标”和“实时新闻”做出判断。
+        禁止引用任何预设的、外部的或未知的经验规则。
+        若新闻无相关内容，请完全依赖技术指标。
 
         【输出格式】
         {{
@@ -275,24 +248,25 @@ class NewsAnalyst:
     @retry(retries=2, delay=5)
     def review_report(self, report_text, macro_str):
         """
-        [战略层] CIO 复盘 (R1) - 唯一拥有 RAG 权限
+        [战略层] CIO 复盘 (R1) - 纯逻辑归纳 (无RAG)
         """
         current_date = datetime.now().strftime("%Y年%m月%d日")
-        rag_knowledge = json.dumps(self.knowledge_base, ensure_ascii=False, indent=2)
         
+        # [V15.16] 提示词净化：移除RAG注入，改为纯粹的宏观与微观对照分析
         prompt = f"""
-        【系统角色】鹊知风CIO | 机构级复盘备忘录 | 日期: {current_date}
-        
-        【绝密档案：鹊知风实战经验库 (RAG)】
-        {rag_knowledge}
+        【系统角色】鹊知风CIO | 首席投资官 | 日期: {current_date}
         
         【输入数据】
-        宏观环境: {macro_str[:2500]} | 交易明细: {report_text[:3000]}
+        1. 宏观环境 (基于新闻流): {macro_str[:2500]}
+        2. 交易明细 (投委会决策): {report_text[:3000]}
         
         【任务】
-        1. 站在上帝视角，点评投委会的决策。
-        2. 如果投委会犯了错（比如不懂RAG里的逆向逻辑），请明确指出并修正。
-        3. 评估策略适配度。
+        请基于上述信息，撰写一份《每日投资复盘备忘录》。
+        1. 宏观定调：根据新闻判断今日市场情绪（恐慌/贪婪/分歧）。
+        2. 策略一致性检查：投委会的买卖操作是否符合今日的宏观基调？
+        3. 风险提示：指出数据中隐含的风险点。
+        
+        注意：不要臆造不存在的规则，只针对已发生的数据进行点评。
         
         【输出】HTML格式CIO备忘录。
         """
@@ -301,25 +275,26 @@ class NewsAnalyst:
     @retry(retries=2, delay=5)
     def advisor_review(self, report_text, macro_str):
         """
-        [审计层] Red Team 顾问 (R1) - 盲审 (无RAG)
+        [审计层] Red Team 顾问 (R1) - 逻辑自洽性审计
         """
         current_date = datetime.now().strftime("%Y年%m月%d日")
         
         prompt = f"""
-        【系统角色】鹊知风Red Team | 独立审计顾问 | 日期: {current_date}
+        【系统角色】鹊知风Red Team | 独立风控顾问 | 日期: {current_date}
         
         【输入数据】
         宏观: {macro_str[:2500]} | 交易: {report_text[:3000]}
         
         【任务】
-        作为独立的第三方风控，请基于“数据”和“逻辑”对交易结果进行压力测试。
+        寻找“数据”与“决策”之间的逻辑漏洞。
+        例如：如果宏观显示重大利空，但投委会却满仓买入，这就是逻辑漏洞。
         
         【五问压力测试】
-        Q1: 确认偏误检测?
-        Q2: 归因谬误检测?
-        Q3: 宏观错配检测?
-        Q4: 流动性幻觉检测?
-        Q5: 尾部风险盲区?
+        Q1: 决策是否过于激进?
+        Q2: 是否忽视了宏观风险?
+        Q3: 仓位控制是否合理?
+        Q4: 交易方向是否与趋势背离?
+        Q5: 是否存在情绪化交易?
         
         【输出】HTML格式审计报告。
         """
