@@ -188,7 +188,7 @@ class NewsAnalyst:
         # [V15.20 改动] 植入 CGO/CRO/CIO 角色纪律与铁律
         prompt = f"""
         【系统架构】鹊知风投委会 (IC) | 角色纪律规范 v2.0
-        当前物理位置: 日本 (Japan) | 视角: 国际投资者
+        
 
         【标的信息】
         标的: {fund_name} (属性: {strategy_type})
@@ -272,7 +272,7 @@ class NewsAnalyst:
         # [V15.20 改动] 引入 CIO 宏观定调纪律与策略一致性检查
         prompt = f"""
         【系统角色】鹊知风 CIO (Chief Investment Officer) | 战略复盘
-        日期: {current_date} | 物理位置: 日本 (Japan)
+        日期: {current_date} 
 
         【输入数据】
         1. 宏观环境 (News Flow): {macro_str[:2500]}
