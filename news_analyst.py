@@ -42,24 +42,25 @@ class NewsAnalyst:
         """
         try:
             time.sleep(1)
-            # 使用电报接口
+            # 使用电报接口，获取含摘要的实时新闻
             df = ak.stock_telegraph_em()
             news = []
             
-            # [关键修改] 抓取数量从 15 提升到 50，确保覆盖面
+            # 抓取数量 50 条，确保覆盖面
             for i in range(min(50, len(df))):
                 title = str(df.iloc[i].get('title') or '')
                 content = str(df.iloc[i].get('content') or '')
                 t = str(df.iloc[i].get('public_time') or '')
                 if len(t) > 10: t = t[5:16] 
                 
-                # 过滤垃圾信息
+                # 宽松过滤
                 if self._is_valid_news(title):
-                    # 这里我们将内容拼接给 AI 看，但在 main.py 里我们会处理显示逻辑
                     item_str = f"[{t}] {title}"
-                    # 如果有实质内容，拼接到字符串里喂给 AI（增加分析深度）
-                    if len(content) > 10 and content != title:
-                        item_str += f"\n   >>> 内容: {content[:200]}"
+                    # 关键：如果有内容，拼接到字符串里喂给 AI
+                    # 这样即使标题是"晚间要闻"，AI也能读到里面的干货
+                    if len(content) > 5 and content != title:
+                        # 限制摘要长度，防止单条过长挤占Token，300字通常足够覆盖核心
+                        item_str += f"\n   >>> 内容: {content[:300]}"
                     news.append(item_str)
             return news
         except Exception as e:
@@ -67,18 +68,23 @@ class NewsAnalyst:
             return []
 
     def _is_valid_news(self, title):
-        """噪音过滤器：只保留有信息量的"""
-        bad_keywords = [
-            "晚间要闻", "要闻集锦", "晚市要闻", "周前瞻", "周回顾", 
-            "早间要闻", "新闻联播", "要闻速递", "重要公告", "盘前必读",
-            "涨停板复盘", "龙虎榜", "互动平台", "融资融券", "报单"
-        ]
-        for kw in bad_keywords:
-            if kw in title: return False
-        if len(title) < 4: return False # 太短的也不要
+        """
+        [修改] 宽松过滤器
+        不再过滤'要闻集锦'、'周回顾'等，因为这些条目的 content 包含高价值宏观信息
+        """
+        if not title: 
+            return False
+        
+        # 只过滤极短的无效标题
+        if len(title) < 2: 
+            return False
+            
+        # 移除之前的 bad_keywords 黑名单
+        # 让所有包含实质内容的汇总类新闻都能通过
+        
         return True
 
-    def get_market_context(self, max_length=30000): # 增加Token上限
+    def get_market_context(self, max_length=35000): # 进一步增加Token上限，容纳更多内容
         news_lines = []
         today_str = get_beijing_time().strftime("%Y-%m-%d")
         file_path = f"data_news/news_{today_str}.jsonl"
@@ -102,8 +108,10 @@ class NewsAnalyst:
                             if len(t_str) > 10: t_str = t_str[5:16]
                             
                             content = str(item.get('content') or item.get('digest') or "")
-                            if len(content) > 50: 
-                                news_entry = f"[{t_str}] {title}\n   >>> 内容: {content[:200]}" 
+                            
+                            # 同样的拼接逻辑
+                            if len(content) > 10: 
+                                news_entry = f"[{t_str}] {title}\n   >>> 内容: {content[:300]}" 
                             else:
                                 news_entry = f"[{t_str}] {title}"
                             
@@ -112,18 +120,18 @@ class NewsAnalyst:
             except Exception as e:
                 logger.error(f"读取新闻缓存失败: {e}")
         
-        # 去重
+        # 去重 (仅根据标题去重，保留最新的一条)
         unique_news = []
         seen = set()
         for n in news_lines:
-            # 只用标题去重
             title_part = n.split('\n')[0]
             if title_part not in seen:
                 seen.add(title_part)
                 unique_news.append(n)
         
         # 喂给 AI 的全量文本
-        final_text = "\n\n".join(unique_news[:80]) # 限制给AI看最新的80条，防止Token溢出
+        # 限制最新的 60 条，配合 max_length 截断
+        final_text = "\n\n".join(unique_news[:60]) 
         
         if len(final_text) > max_length:
             return final_text[:max_length] + "\n...(早期消息已截断)"
@@ -173,7 +181,7 @@ class NewsAnalyst:
         {expert_rules}
         
         【舆情摘要 (Content-Aware)】
-        {str(news)[:20000]}
+        {str(news)[:25000]}
 
         【任务】
         输出严格JSON，不要Markdown。Adjustment为整数。
@@ -225,7 +233,7 @@ class NewsAnalyst:
         current_date = datetime.now().strftime("%Y年%m月%d日")
         prompt = f"""
         【系统角色】鹊知风CIO | 机构级复盘备忘录 | 日期: {current_date}
-        【输入数据】宏观: {macro_str[:2000]} | 交易: {report_text[:3000]}
+        【输入数据】宏观: {macro_str[:2500]} | 交易: {report_text[:3000]}
         【任务】1.精确归因 2.策略适配评估
         【输出】HTML格式CIO备忘录。
         """
@@ -236,7 +244,7 @@ class NewsAnalyst:
         current_date = datetime.now().strftime("%Y年%m月%d日")
         prompt = f"""
         【系统角色】鹊知风Red Team | 独立审计顾问 | 日期: {current_date}
-        【输入数据】宏观: {macro_str[:2000]} | 交易: {report_text[:3000]}
+        【输入数据】宏观: {macro_str[:2500]} | 交易: {report_text[:3000]}
         【任务】五问压力测试
         【输出】HTML格式审计报告。
         """
