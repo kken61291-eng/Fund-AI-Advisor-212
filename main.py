@@ -110,28 +110,22 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
 
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
     """
-    生成完整的 HTML 邮件报告 (V15.14 经典样式还原：带时间戳右对齐，无摘要，动态长度)
+    生成完整的 HTML 邮件报告 (V15.14 经典样式：只显示清洗后的标题)
     """
     news_html = ""
-    # [关键修改] 不再切片限制 [:50]，而是显示所有传入的新闻 (news_analyst 已经按 Token 限制过了)
     if isinstance(all_news, list):
-        for i, news in enumerate(all_news): 
-            # 处理字典或字符串
-            if isinstance(news, dict):
-                title = news.get('title', 'No Title')
-                time_str = news.get('time', '')
+        for i, news in enumerate(all_news): # 显示所有清洗后的新闻
+            # UI 还原：解析 [时间] 标题 格式
+            raw_text = str(news)
+            if raw_text.startswith('[') and '] ' in raw_text:
+                parts = raw_text.split('] ', 1)
+                time_str = parts[0][1:] 
+                title = parts[1]
             else:
-                # 尝试解析 [时间] 标题
-                raw_text = str(news)
-                if raw_text.startswith('[') and '] ' in raw_text:
-                    parts = raw_text.split('] ', 1)
-                    time_str = parts[0][1:] # 去掉 [
-                    title = parts[1]
-                else:
-                    title = raw_text
-                    time_str = ""
+                title = raw_text
+                time_str = ""
             
-            # [UI 还原] V15.14 经典样式
+            # V15.14 经典样式
             news_html += f"""<div style="font-size:11px;color:#ccc;margin-bottom:5px;border-bottom:1px dashed #333;padding-bottom:3px;"><span style="color:#ffb74d;margin-right:4px;">●</span>{title}<span style="float:right;color:#666;font-size:10px;">{time_str}</span></div>"""
     
     def render_dots(hist):
@@ -207,7 +201,6 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
         except Exception as e:
             logger.error(f"Render Error {r.get('name')}: {e}")
             
-    # [UI 还原] 恢复 "QUEZHIFENG QUANT" 和 "MAGPIE SENSES THE WIND"
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body {{ background: #0a0a0a; color: #f0e6d2; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; max-width: 660px; margin: 0 auto; padding: 20px; }} .main-container {{ border: 2px solid #333; border-top: 5px solid #ffb74d; border-radius: 4px; padding: 20px; background: linear-gradient(180deg, #1b1b1b 0%, #000000 100%); }} .header {{ text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 25px; }} .title {{ color: #ffb74d; margin: 0; font-size: 32px; font-weight: 800; font-family: 'Times New Roman', serif; letter-spacing: 2px; }} .subtitle {{ font-size: 11px; color: #888; margin-top: 8px; text-transform: uppercase; }} .radar-panel {{ background: #111; border: 1px solid #333; border-radius: 4px; padding: 15px; margin-bottom: 25px; }} .radar-title {{ font-size: 14px; color: #ffb74d; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #444; padding-bottom: 6px; letter-spacing: 1px; }} .cio-section {{ background: linear-gradient(145deg, #1a0505, #2b0b0b); border: 1px solid #5c1818; border-left: 4px solid #d32f2f; padding: 20px; margin-bottom: 20px; border-radius: 2px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }} .cio-section * {{ color: #ffffff !important; line-height: 1.6; }} .cio-section h3 {{ border-bottom: 1px dashed #5c1818; padding-bottom: 5px; margin-top: 15px; margin-bottom: 8px; display: block; width: 100%; }} .advisor-section {{ background: #0f0f0f; border: 1px solid #d4af37; border-left: 4px solid #ffd700; padding: 20px; margin-bottom: 30px; border-radius: 4px; box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); position: relative; }} .advisor-section * {{ color: #ffffff !important; line-height: 1.6; font-family: 'Georgia', serif; }} .advisor-section h4 {{ color: #ffd700 !important; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px dashed #333; padding-bottom: 4px; }} .section-title {{ font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #eee; text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }} .footer {{ text-align: center; font-size: 10px; color: #444; margin-top: 40px; }} </style></head><body><div class="main-container"><div class="header"><h1 class="title">QUEZHIFENG QUANT</h1><div class="subtitle">MAGPIE SENSES THE WIND | V15.15 FULL CONTEXT</div></div><div class="radar-panel"><div class="radar-title">📡 7x24 GLOBAL LIVE WIRE</div>{news_html}</div><div class="cio-section"><div class="section-title">🛑 CIO 战略审计</div>{cio_html}</div><div class="advisor-section"><div class="section-title" style="color: #ffd700;">🐦 鹊知风·场外实战复盘</div>{advisor_html}</div>{rows}<div class="footer">EST. 2026 | POWERED BY AKSHARE & EM | V15.15</div></div></body></html>"""
 
 def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, market_context, base_amt, max_daily):
@@ -303,10 +296,15 @@ def main():
     
     all_news_seen = []
     if market_context and market_context != "今日暂无重大新闻。":
-        # [关键修改] 移除了 [:20] 限制，展示全部符合长度的新闻
         for line in market_context.split('\n'):
-            if line.strip(): # 过滤空行
-                all_news_seen.append(line)
+            try:
+                # [关键过滤逻辑]
+                # news_analyst 返回的格式：[时间] 标题 \n (摘要: 内容...)
+                # 我们只取以 [ 开头的行 (标题行)，自动忽略摘要行
+                if line.strip().startswith('['):
+                    all_news_seen.append(line.strip())
+            except Exception:
+                pass
 
     results = []; cio_lines = [f"【宏观环境】: (见独立审计报告)\n"]
     
