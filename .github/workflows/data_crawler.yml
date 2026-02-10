@@ -30,6 +30,8 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
+        # [关键] 强制升级 akshare 到最新版，防止接口失效
+        pip install --upgrade akshare
 
     - name: 🕷️ Run Market Data Crawler
       env:
