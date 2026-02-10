@@ -68,7 +68,6 @@ def fetch_eastmoney_direct():
             text = resp.text
             
             # [核心修复] 不用正则，直接暴力截取第一个 { 和最后一个 } 之间的内容
-            # 这能解决 var ajaxResult = ... 格式变化导致的问题
             try:
                 start_idx = text.find('{')
                 end_idx = text.rfind('}')
@@ -99,8 +98,6 @@ def fetch_eastmoney_direct():
                     print("   - [Plan B] 未找到 JSON 结构 ({} 不匹配)")
             except Exception as parse_e:
                 print(f"   - [Plan B] JSON 解析异常: {parse_e}")
-                # 打印一点点内容方便调试
-                print(f"   - [Debug] 返回内容前50字符: {text[:50]}")
         else:
             print(f"   - [Plan B] HTTP请求失败: {resp.status_code}")
             
@@ -188,9 +185,17 @@ def fetch_cls_selenium():
                 time_span = node.find("span", class_="telegraph-time")
                 time_str = time_span.get_text().strip() if time_span else ""
                 
-                if len(time_str) <= 5 and ":" in time_str:
-                    full_time = f"{current_date_prefix} {time_str}:00"
+                # [核心修复] 增强日期补全逻辑
+                # 只要是类似 HH:MM (5位) 或 HH:MM:SS (8位) 的短时间，都补全日期
+                if len(time_str) < 10 and ":" in time_str:
+                    # 如果只有 5 位 (13:16)，补秒
+                    if len(time_str) <= 5:
+                        full_time = f"{current_date_prefix} {time_str}:00"
+                    else:
+                        # 否则直接拼日期 (13:16:49)
+                        full_time = f"{current_date_prefix} {time_str}"
                 else:
+                    # 已经是完整时间或其他格式
                     full_time = time_str
 
                 content_div = node.find("div", class_="telegraph-content")
@@ -256,6 +261,7 @@ def fetch_and_save_news():
                 except: pass
 
     new_count = 0
+    # 重新排序：确保有时间的排前面
     all_news_items.sort(key=lambda x: x['time'], reverse=True)
 
     with open(today_file, 'a', encoding='utf-8') as f:
