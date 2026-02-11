@@ -16,7 +16,7 @@ from utils import send_email, logger, LOG_FILENAME
 from ui_renderer import render_html_report_v19
 
 # --- 全局配置 ---
-TEST_MODE = True
+TEST_MODE = False
 tracker_lock = threading.Lock()
 
 def load_config():
