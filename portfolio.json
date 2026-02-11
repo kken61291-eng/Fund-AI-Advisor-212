@@ -195,7 +195,7 @@
     "name": "日经225ETF",
     "shares": 19029.534149707517,
     "cost": 1.4714,
-    "held_days": 18,
+    "held_days": 19,
     "history": [
       {
         "date": "2026-02-10",
@@ -695,7 +695,7 @@
     "name": "30年国债ETF",
     "shares": 103.72338298946477,
     "cost": 115.6923,
-    "held_days": 17,
+    "held_days": 18,
     "history": [
       {
         "date": "2026-02-10",
@@ -1121,7 +1121,7 @@
     "name": "豆粕ETF",
     "shares": 2025.3164556962024,
     "cost": 1.975,
-    "held_days": 3,
+    "held_days": 4,
     "history": [
       {
         "date": "2026-02-10",
