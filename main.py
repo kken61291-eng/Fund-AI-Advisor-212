@@ -5,7 +5,7 @@ import time
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 导入核心模块
+# --- 导入核心业务模块 ---
 from data_fetcher import DataFetcher
 from news_analyst import NewsAnalyst
 from technical_analyzer import TechnicalAnalyzer
@@ -13,11 +13,13 @@ from valuation_engine import ValuationEngine
 from portfolio_tracker import PortfolioTracker
 from utils import send_email, logger, LOG_FILENAME
 
-# 导入 UI 渲染模块
+# --- 导入 UI 渲染模块 (已拆分) ---
 from ui_renderer import render_html_report_v17
 
 # --- 全局配置 ---
-TEST_MODE = True   # 【🔥修改这里】True = 仅测试第一个标的; False = 运行全量
+# 【🔥测试开关】True = 仅测试 Config 中的第一个标的; False = 运行全量扫描
+TEST_MODE = True   
+
 tracker_lock = threading.Lock()
 
 def load_config():
@@ -30,7 +32,7 @@ def load_config():
 
 def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_amt, max_daily, pos, strategy_type, fund_name):
     """
-    V13 核心资金管理策略
+    V13 核心资金管理策略 (战术分 + 估值分 + 风控否决)
     """
     base_score = tech.get('quant_score', 50)
     try: ai_adj_int = int(ai_adj)
@@ -64,6 +66,7 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
         if val_mult > 1.2: final_mult = 0; reasons.append(f"战略:底部锁仓")
         elif val_mult < 0.8: final_mult *= 1.5; reasons.append("战略:高估止损")
     else:
+        # 左侧定投逻辑
         if val_mult >= 1.5 and strategy_type in ['core', 'dividend']:
             final_mult = 0.5; reasons.append(f"战略:左侧定投")
 
@@ -71,11 +74,12 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
     if cro_signal == "VETO" and final_mult > 0:
         final_mult = 0; reasons.append(f"🛡️风控:否决")
     
-    # 4. 交易规则
+    # 4. 交易规则 (7日锁仓)
     held_days = pos.get('held_days', 999)
     if final_mult < 0 and pos['shares'] > 0 and held_days < 7:
         final_mult = 0; reasons.append(f"规则:锁仓({held_days}天)")
 
+    # 5. 计算金额
     final_amt = 0; is_sell = False; sell_val = 0; label = "观望"
     if final_mult > 0:
         final_amt = max(0, min(int(base_amt * final_mult), int(max_daily)))
@@ -91,7 +95,7 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
 def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, market_context, base_amt, max_daily):
     """单只基金全流程处理"""
     
-    # 强制随机延时 (防封锁)
+    # [方案 A] 强制随机延时，防止接口封锁
     time.sleep(random.uniform(2.0, 4.0))
     
     try:
@@ -100,7 +104,7 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
         if data is None or data.empty: return None, "", []
         
         # 2. 技术分析 (V17.0)
-        # 注意：需要确保 technical_analyzer.py 已更新为最新版 (含 __init__)
+        # 注意：使用 TechnicalAnalyzer 类实例
         analyzer_instance = TechnicalAnalyzer(asset_type='ETF') 
         tech = analyzer_instance.calculate_indicators(data)
         if not tech: return None, []
@@ -113,7 +117,7 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
         )
         with tracker_lock: pos = tracker.get_position(fund['code'])
 
-        # 4. AI 投委会分析
+        # 4. AI 投委会分析 (包含全量指标投喂)
         ai_res = {}
         if analyst:
             cro_signal = tech.get('tech_cro_signal', 'PASS')
@@ -141,11 +145,13 @@ def main():
     config = load_config()
     fetcher, tracker, val_engine = DataFetcher(), PortfolioTracker(), ValuationEngine()
     
+    # 确认持仓天数
     tracker.confirm_trades()
     
     try: analyst = NewsAnalyst()
     except: analyst = None
 
+    # 获取市场新闻
     market_context = analyst.get_market_context() if analyst else "无数据"
     all_news_seen = [line.strip() for line in market_context.split('\n') if line.strip().startswith('[')]
 
@@ -155,16 +161,16 @@ def main():
     if TEST_MODE:
         if funds:
             logger.info(f"🚧 【测试模式开启】仅处理第一个标的: {funds[0]['name']}")
-            funds = funds[:1] # 只取切片中的第一个
+            funds = funds[:1] # 只取切片中的第一个进行测试
         else:
             logger.error("❌ Config 中没有基金，无法测试")
             return
 
     results, cio_lines = [], []
     
+    # [方案 A] 单线程安全模式 (max_workers=1) 防封锁
     logger.info("🚀 启动单线程处理...")
     
-    # 无论是否测试模式，都强制单线程，确保稳定
     with ThreadPoolExecutor(max_workers=1) as executor:
         futures = {executor.submit(process_single_fund, f, config, fetcher, tracker, val_engine, analyst, market_context, config['global']['base_invest_amount'], config['global']['max_daily_invest']): f for f in funds}
         for f in as_completed(futures):
@@ -174,17 +180,21 @@ def main():
                 print(f"✅ 完成: {res['name']}") 
 
     if results:
+        # 按战术分排序
         results.sort(key=lambda x: -x['tech'].get('final_score', 0))
+        
+        # 生成 AI 总结报告
         full_report = "\n".join(cio_lines)
         cio_html = analyst.review_report(full_report, market_context) if analyst else ""
         advisor_html = analyst.advisor_review(full_report, market_context) if analyst else ""
         
-        # 调用分离出去的 UI 渲染器
+        # 调用分离出去的 UI 渲染器生成 HTML
         html = render_html_report_v17(all_news_seen, results, cio_html, advisor_html) 
         
+        # 邮件发送
         subject_prefix = "🚧 [测试] " if TEST_MODE else "🕊️ "
         send_email(f"{subject_prefix}鹊知风 V17.0 全量化仪表盘", html, attachment_path=LOG_FILENAME)
-        logger.info("✅ 测试运行结束，邮件已发送。")
+        logger.info("✅ 运行结束，邮件已发送。")
     else:
         logger.warning("⚠️ 没有生成任何结果，请检查日志报错。")
 
