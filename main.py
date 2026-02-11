@@ -34,6 +34,8 @@ def clean_markdown(text):
     text = re.sub(r'```(?:html|json|markdown)?', '', text)
     # 2. 移除常见的 Markdown 加粗标记
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    # 3. 移除标题标记 (如 ### 核心审计发现 -> 核心审计发现)
+    text = re.sub(r'#+\s+', '', text)
     return text.strip()
 
 def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_amt, max_daily, pos, strategy_type, fund_name):
@@ -98,7 +100,7 @@ def calculate_position_v13(tech, ai_adj, ai_decision, val_mult, val_desc, base_a
 
 def render_html_report_v13(all_news, results, cio_html, advisor_html):
     """
-    生成 HTML 报告 - 仅增加清洗逻辑和 v3.2 嵌套字段适配，抬头标题完全保留
+    生成 HTML 报告 - 适配 v3.2 嵌套字段，修正底色与 Markdown
     """
     COLOR_GOLD = "#fab005" 
     COLOR_RED = "#fa5252"  
@@ -119,7 +121,6 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
         tech = r.get('tech', {})
         ai_data = r.get('ai_analysis', {})
         
-        # 适配 v3.2 嵌套 JSON 数据
         bull_say = clean_markdown(ai_data.get('cgo_proposal', {}).get('catalyst', '无明显催化'))
         bear_say = clean_markdown(ai_data.get('cro_audit', {}).get('max_drawdown_scenario', '无'))
         chairman = clean_markdown(ai_data.get('chairman_conclusion', '无结论'))
@@ -146,8 +147,14 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             </div>
             <div style="margin-top:8px;">{reasons}</div>
             <div style="margin-top:12px;border-top:1px solid #333;padding-top:10px;">
-                <div style="border-left:2px solid {COLOR_GREEN};background:rgba(81,207,102,0.05);padding:8px;margin-bottom:5px;font-size:11px;">🦊 CGO: "{bull_say}"</div>
-                <div style="border-left:2px solid {COLOR_RED};background:rgba(250,82,82,0.05);padding:8px;margin-bottom:5px;font-size:11px;">🐻 CRO: "{bear_say}"</div>
+                <div style="border-left:2px solid {COLOR_GREEN};background:rgba(81,207,102,0.05);padding:8px;margin-bottom:5px;font-size:11px;">
+                    <div style="color:{COLOR_GREEN};font-weight:bold;margin-bottom:2px;">🦊 CGO</div>
+                    <div style="color:#c0ebc9;">"{bull_say}"</div>
+                </div>
+                <div style="border-left:2px solid {COLOR_RED};background:rgba(250,82,82,0.05);padding:8px;margin-bottom:5px;font-size:11px;">
+                    <div style="color:{COLOR_RED};font-weight:bold;margin-bottom:2px;">🐻 CRO</div>
+                    <div style="color:#ffc9c9;">"{bear_say}"</div>
+                </div>
                 <div style="background:rgba(250,176,5,0.05);padding:10px;border-radius:4px;border:1px solid rgba(250,176,5,0.2);margin-top:8px;">
                     <div style="color:{COLOR_GOLD};font-size:12px;font-weight:bold;margin-bottom:4px;">⚖️ CIO 终审</div>
                     <div style="color:{COLOR_TEXT_MAIN};font-size:12px;">{chairman}</div>
@@ -171,6 +178,9 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
         body {{ background: {COLOR_BG_MAIN}; color: {COLOR_TEXT_MAIN}; font-family: sans-serif; margin: 0; padding: 10px; }}
         .main-container {{ max-width: 600px; margin: 0 auto; background: #0a0c0e; border: 1px solid #2c3e50; padding: 15px; border-radius: 8px; }}
         .tech-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 11px; color: {COLOR_TEXT_SUB}; }}
+        .cio-content, .advisor-content {{ line-height: 1.6; font-size: 13px; color: {COLOR_TEXT_MAIN} !important; }}
+        /* 强制排除 AI 可能生成的白底干扰 */
+        .cio-content *, .advisor-content * {{ background-color: transparent !important; color: inherit !important; }}
         @media (max-width: 480px) {{ .tech-grid {{ grid-template-columns: 1fr; }} .main-container {{ padding: 10px; border: none; }} }}
     </style></head><body>
     <div class="main-container">
@@ -184,12 +194,12 @@ def render_html_report_v13(all_news, results, cio_html, advisor_html):
             {news_html}
         </div>
         <div style="background:{COLOR_BG_CARD};padding:15px;border-radius:4px;border-left:3px solid {COLOR_RED};margin-bottom:15px;">
-            <div style="color:{COLOR_RED};font-weight:bold;margin-bottom:10px;">🛑 CIO 战略审计</div>
-            <div style="font-size:13px; color:#eee;">{cio_html}</div>
+            <div style="color:{COLOR_RED};font-weight:bold;margin-bottom:10px;">🛑 CIO 战略审计报告</div>
+            <div class="cio-content">{cio_html}</div>
         </div>
         <div style="background:{COLOR_BG_CARD};padding:15px;border-radius:4px;border-left:3px solid {COLOR_GOLD};margin-bottom:15px;">
-            <div style="color:{COLOR_GOLD};font-weight:bold;margin-bottom:10px;">🐦 鹊知风·实战复盘</div>
-            <div style="font-size:13px; color:#eee;">{advisor_html}</div>
+            <div style="color:{COLOR_GOLD};font-weight:bold;margin-bottom:10px;">🐦 鹊知风·趋势一致性审计</div>
+            <div class="advisor-content">{advisor_html}</div>
         </div>
         {rows}
         <div style="text-align:center; color:#444; font-size:10px; margin-top:30px;">EST. 2026 | POWERED BY AI</div>
@@ -214,7 +224,6 @@ def process_single_fund(fund, config, fetcher, tracker, val_engine, analyst, mar
             risk_payload = {"fuse_level": 3 if cro_signal == 'VETO' else 0, "risk_msg": tech.get('tech_cro_comment', '监控')}
             ai_res = analyst.analyze_fund_v5(fund['name'], tech, None, market_context, risk_payload, fund.get('strategy_type', 'core'))
 
-        # 适配：提取 v3.2 顶层及嵌套决策字段
         ai_adj = ai_res.get('adjustment', 0)
         ai_decision = ai_res.get('decision', 'PASS') 
         
@@ -238,7 +247,6 @@ def main():
     except: analyst = None
 
     market_context = analyst.get_market_context() if analyst else "无数据"
-    # 保持原有的新闻解析逻辑
     all_news_seen = [line.strip() for line in market_context.split('\n') if line.strip().startswith('[')]
 
     results, cio_lines = [], []
