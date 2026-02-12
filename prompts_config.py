@@ -155,7 +155,7 @@ Step 5: 若趋势阶段为"衰竭"或"反转"，强制输出"HOLD"或"REJECT"，
 - 发现顶背离: CRO可强制 override CGO，decision="HOLD"或减仓
 
 【输出格式 - 严格JSON v3.2】
-(注意：本回复严禁包含任何URL链接；严禁使用两个连续换行符 \\n\\n，保持紧凑)
+(注意：本回复严禁包含任何URL链接；)
 
 {{
     "trend_analysis": {{
